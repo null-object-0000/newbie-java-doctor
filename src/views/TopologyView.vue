@@ -138,6 +138,7 @@ type DropPayload =
 
 function onDropFromPalette(payload: DropPayload) {
   if (payload.type === 'layer') {
+    if (!canAddLayer(payload.layerId)) return
     store.addLayerNode(payload.layerId)
     return
   }
@@ -176,7 +177,7 @@ function onDropFromPalette(payload: DropPayload) {
         </div>
         <div class="middle-content">
           <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
-            :layer-display-fields="layerDisplayFields"
+            :layer-display-fields="layerDisplayFields" :visible="middleViewMode === 'graph'"
             @remove="onRemove" @edit="onEdit" @drop="onDropFromPalette" @node-moved="onNodeMoved"
             @edge-vertices-changed="onEdgeVerticesChanged" @edge-connected="onEdgeConnected" />
           <div v-show="middleViewMode === 'json'" class="json-view">

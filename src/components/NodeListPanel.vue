@@ -27,9 +27,13 @@ function isLayerDraggable(layer: (typeof layers)[number], canAddLayer: (id: 'cli
   return canAddLayer(layer.layerId as 'client' | 'access' | 'host' | 'runtime')
 }
 
+/** 仅从节点列表拖出时设置，拓扑图只认此标记的 drop，避免图上拖节点等误触导致重复添加 */
+const PALETTE_DROP_MARKER = 'application/x-java-doctor-palette'
+
 function onDragStart(e: DragEvent, payload: DragPayload) {
   if (!e.dataTransfer) return
   e.dataTransfer.effectAllowed = 'copy'
+  e.dataTransfer.setData(PALETTE_DROP_MARKER, '1')
   e.dataTransfer.setData('application/json', JSON.stringify(payload))
   e.dataTransfer.setData('text/plain', payload.label)
 }

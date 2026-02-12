@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Graph, Shape, Snapline } from '@antv/x6'
 import { getLayerIcon, getLayerTheme } from '@/registry/layers'
 import type { TopologyNode, TopologyEdge, DependencyKind } from '@/types/layers'
@@ -16,10 +16,10 @@ const props = withDefaults(
   defineProps<{
     nodes: TopologyNode[]
     edges: TopologyEdge[]
-    /** 每层在拓扑卡片上展示的字段（label + displayText，枚举已映射为描述） */
     layerDisplayFields?: Record<string, { label: string; displayText: string }[]>
+    visible?: boolean
   }>(),
-  { layerDisplayFields: () => ({}) }
+  { layerDisplayFields: () => ({}), visible: true }
 )
 
 const emit = defineEmits<{
@@ -36,8 +36,11 @@ const emit = defineEmits<{
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
-/** 仅位置变更时跳过整图重绘，避免拖拽时“复制出一份”的错觉 */
-const skipFullSyncRef = ref(false)
+/**
+ * node:moved 之后只需同步位置，不需要重建 HTML 内容。
+ * 避免拖拽结束后不必要的 HTML 重渲染。
+ */
+const positionOnlyRef = ref(false)
 let graph: Graph | null = null
 
 function getNodePosition(index: number) {
@@ -47,7 +50,7 @@ function getNodePosition(index: number) {
   }
 }
 
-// 端口配置（参考官方：top/bottom 用于线性连线，hover 显隐）
+// ---- 端口配置 ----
 const basePortAttrs = {
   r: PORT_R,
   magnet: true,
@@ -130,7 +133,7 @@ function registerShapes() {
         const removeBtn = document.createElement('span')
         removeBtn.className = 'op'
         removeBtn.title = '删除节点'
-        removeBtn.textContent = '✖️'
+        removeBtn.textContent = '\u2716\uFE0F'
         removeBtn.dataset.action = 'remove'
         actions.appendChild(removeBtn)
       }
@@ -171,7 +174,7 @@ function handleNodeClick(_args: { e: MouseEvent; node: { id: string; getData: ()
   if (raw) emit('edit', raw)
 }
 
-// 端口显隐（参考官方：mouseenter 显示，mouseleave 根据是否连接决定）
+// ---- 端口工具函数 ----
 function isPortConnected(nodeId: string, portId: string): boolean {
   if (!graph) return false
   const node = graph.getCellById(nodeId)
@@ -227,67 +230,86 @@ function showNodePorts(node: { id: string; getPorts: () => { id: string }[] }, s
   }
 }
 
-/** 仅按 props 更新节点位置，不整图清空重绘（用于拖拽结束后避免“复制节点”的错觉） */
-function updatePositionsOnly() {
-  if (!graph) return
-  const nodes = props.nodes
-  nodes.forEach((node, i) => {
-    const cell = graph!.getCellById(node.id)
-    if (!cell || !graph!.isNode(cell)) return
-    const pos =
-      node.x != null && node.y != null
-        ? { x: node.x, y: node.y }
-        : getNodePosition(i)
-    cell.setPosition(pos.x, pos.y)
-  })
-}
-
+// ---- 核心：增量同步（永远不 clearCells，只增删改差异部分） ----
 function syncGraph() {
   if (!graph || !containerRef.value) return
 
-  if (skipFullSyncRef.value) {
-    skipFullSyncRef.value = false
-    updatePositionsOnly()
-    return
+  const dataNodes = props.nodes
+  const dataEdges = props.edges
+  const displayFieldsMap = props.layerDisplayFields ?? {}
+
+  // --- 同步节点 ---
+  const dataNodeIds = new Set(dataNodes.map((n) => n.id))
+  const graphNodes = graph.getNodes()
+
+  // 1) 删除图上多余的节点（在图中但不在数据里）
+  for (const gn of graphNodes) {
+    if (!dataNodeIds.has(gn.id)) {
+      graph.removeCell(gn)
+    }
   }
 
-  const nodes = props.nodes
-  const edges = props.edges
-
-  graph.clearCells()
-
-  const displayFieldsMap = props.layerDisplayFields ?? {}
-  nodes.forEach((node, i) => {
+  // 2) 添加缺失的节点 / 更新已有节点
+  let addedNew = false
+  dataNodes.forEach((node, i) => {
     const pos =
       node.x != null && node.y != null
         ? { x: node.x, y: node.y }
         : getNodePosition(i)
-    graph!.addNode({
-      id: node.id,
-      shape: SHAPE_NAME,
-      x: pos.x,
-      y: pos.y,
-      width: CARD_WIDTH,
-      height: CARD_HEIGHT,
-      data: { raw: node, displayFields: displayFieldsMap[node.layerId] ?? [] },
-      ports: PORTS,
-      movable: true,
-    })
+    const existing = graph!.getCellById(node.id)
+    if (existing && graph!.isNode(existing)) {
+      // 已存在：只更新位置
+      existing.setPosition(pos.x, pos.y)
+      // 仅位置变更时跳过数据更新（避免 HTML 重渲染闪烁）
+      if (!positionOnlyRef.value) {
+        existing.setData({ raw: node, displayFields: displayFieldsMap[node.layerId] ?? [] })
+      }
+    } else {
+      // 不存在：添加新节点
+      graph!.addNode({
+        id: node.id,
+        shape: SHAPE_NAME,
+        x: pos.x,
+        y: pos.y,
+        width: CARD_WIDTH,
+        height: CARD_HEIGHT,
+        data: { raw: node, displayFields: displayFieldsMap[node.layerId] ?? [] },
+        ports: PORTS,
+        movable: true,
+      })
+      addedNew = true
+    }
   })
 
-  edges.forEach((edge) => {
-    graph!.addEdge({
-      id: edge.id,
-      shape: EDGE_SHAPE,
-      source: { cell: edge.source, port: 'bottom' },
-      target: { cell: edge.target, port: 'top' },
-      vertices: edge.vertices ?? [],
-      connector: { name: 'smooth', args: { direction: 'V' } },
-    })
-  })
+  // --- 同步边 ---
+  const dataEdgeIds = new Set(dataEdges.map((e) => e.id))
+  const graphEdges = graph.getEdges()
 
-  // 已连线的端口显示为激活色
-  edges.forEach((edge) => {
+  // 1) 删除图上多余的边
+  for (const ge of graphEdges) {
+    if (!dataEdgeIds.has(ge.id)) {
+      graph.removeCell(ge)
+    }
+  }
+
+  // 2) 添加缺失的边
+  for (const edge of dataEdges) {
+    const existing = graph.getCellById(edge.id)
+    if (!existing) {
+      graph.addEdge({
+        id: edge.id,
+        shape: EDGE_SHAPE,
+        source: { cell: edge.source, port: 'bottom' },
+        target: { cell: edge.target, port: 'top' },
+        vertices: edge.vertices ?? [],
+        connector: { name: 'smooth', args: { direction: 'V' } },
+      })
+      addedNew = true
+    }
+  }
+
+  // --- 端口激活色 ---
+  dataEdges.forEach((edge) => {
     const src = graph!.getCellById(edge.source)
     const tgt = graph!.getCellById(edge.target)
     if (src && graph!.isNode(src)) {
@@ -300,9 +322,11 @@ function syncGraph() {
     }
   })
 
-  graph.centerContent()
+  positionOnlyRef.value = false
+  if (addedNew) graph.centerContent()
 }
 
+// ---- 缩放 ----
 function zoomIn() {
   if (graph) graph.zoom(0.2)
 }
@@ -318,6 +342,9 @@ function resetView() {
   }
 }
 
+// ---- 拖拽 drop（只接受节点列表） ----
+const PALETTE_DROP_MARKER = 'application/x-java-doctor-palette'
+
 function onDragOver(e: DragEvent) {
   e.preventDefault()
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
@@ -325,13 +352,16 @@ function onDragOver(e: DragEvent) {
 
 function onDrop(e: DragEvent) {
   e.preventDefault()
-  const raw = e.dataTransfer?.getData('application/json')
+  // 只接受从节点列表（NodeListPanel）发起的拖拽，其它 drop 一律忽略
+  if (!e.dataTransfer?.getData(PALETTE_DROP_MARKER)) return
+  const raw = e.dataTransfer.getData('application/json')
   if (!raw) return
   try {
     const payload = JSON.parse(raw) as
       | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime' }
       | { type: 'dependency'; kind: DependencyKind; label: string }
     if (payload.type === 'layer' && payload.layerId) {
+      if (props.nodes.some((n) => n.layerId === payload.layerId)) return
       emit('drop', { type: 'layer', layerId: payload.layerId })
     } else if (payload.type === 'dependency' && payload.kind != null && payload.label != null) {
       emit('drop', { type: 'dependency', kind: payload.kind, label: payload.label })
@@ -341,6 +371,7 @@ function onDrop(e: DragEvent) {
   }
 }
 
+// ---- 生命周期 ----
 onMounted(() => {
   if (!containerRef.value) return
 
@@ -377,7 +408,7 @@ onMounted(() => {
   })
   graph.on('node:moved', ({ node }: { node: { id: string; getPosition: () => { x: number; y: number } } }) => {
     const pos = node.getPosition()
-    skipFullSyncRef.value = true
+    positionOnlyRef.value = true
     emit('nodeMoved', { nodeId: node.id, x: pos.x, y: pos.y })
   })
   graph.on('edge:change:vertices', ({ edge }: { edge: { id: string; getVertices: () => Array<{ x: number; y: number }> } }) => {
@@ -406,6 +437,16 @@ watch(
   () => syncGraph(),
   { deep: true },
 )
+
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) {
+      positionOnlyRef.value = false
+      nextTick(() => syncGraph())
+    }
+  },
+)
 </script>
 
 <template>
@@ -417,8 +458,8 @@ watch(
     <div ref="containerRef" class="x6-container" />
     <div class="zoom-controls">
       <button type="button" title="放大" @click="zoomIn">+</button>
-      <button type="button" title="缩小" @click="zoomOut">−</button>
-      <button type="button" title="重置视图" @click="resetView">⟲</button>
+      <button type="button" title="缩小" @click="zoomOut">&minus;</button>
+      <button type="button" title="重置视图" @click="resetView">&#x27F2;</button>
     </div>
   </div>
 </template>
@@ -474,7 +515,7 @@ watch(
 </style>
 
 <style>
-/* 拓扑卡片（参考官方 agent-card / flow-card） */
+/* 拓扑卡片 */
 .topology-card {
   display: flex;
   flex-direction: column;
