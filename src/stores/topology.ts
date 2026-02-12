@@ -1,5 +1,15 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import {
+  getLayerLabels,
+  getLayerLabel,
+  getLayerOrder,
+  getLayerMaxCount,
+  getDependencyNodeTypeLabel,
+  getDependencyKindLabels,
+  getDefaultParams,
+  getDefaultConfig,
+} from '@/registry/layers'
 import type {
   ClientLayerParams,
   AccessLayerParams,
@@ -16,109 +26,6 @@ import type {
   LayerId,
   DependencyKind,
 } from '@/types/layers'
-
-const defaultClientParams: ClientLayerParams = {
-  businessScenario: 'io',
-  networkEnv: 'intra_dc',
-  messageSizeBytes: 1024,
-  concurrentUsers: 100,
-  targetThroughputRps: 500,
-  expectedFailureRatePercent: 0,
-}
-
-const defaultAccessParams: AccessLayerParams = {
-  nodes: ['Tengine', 'Nginx', 'API Gateway'],
-  note: '此环节由运维管控，暂不纳入调优排障，仅用以完善链路。',
-}
-
-const defaultHostParams: HostLayerParams = {
-  spec: {
-    vCpu: 8,
-    cpuFreqGhz: 2.5,
-    memoryGb: 16,
-    architecture: 'x86',
-  },
-  storage: {
-    diskType: 'ssd',
-    iopsLimit: 10000,
-    throughputMbPerSec: 500,
-  },
-  network: {
-    nicBandwidthGbps: 10,
-    ppsLimit: 1000000,
-  },
-  os: {
-    osVersion: 'AlmaLinux 9',
-    kernelVersion: '5.14',
-  },
-}
-
-const defaultHostConfig: HostLayerConfig = {
-  net: {
-    tcpTwReuse: 1,
-    ipLocalPortRange: '32768 60999',
-    tcpMaxTwBuckets: 5000,
-  },
-  fs: {
-    ulimitN: 65535,
-    fsNrOpen: 65535,
-    fsFileMax: 2097152,
-  },
-}
-
-const defaultRuntimeParams: RuntimeParams = {
-  jdkVersion: '21',
-  logLinesPerRequest: 5,
-  logSizeBytesPerRequest: 512,
-}
-
-const defaultRuntimeConfig: RuntimeConfig = {
-  gc: 'G1GC',
-  jvmOptions: '-Xms4g -Xmx4g',
-  virtualThreadsEnabled: true,
-  tomcatMaxThreads: 200,
-  tomcatMinSpareThreads: 10,
-  tomcatMaxConnections: 10000,
-  tomcatAcceptCount: 100,
-  logbackMaxFileSize: '100MB',
-  logbackMaxHistory: 30,
-  logbackQueueSize: 256,
-  logbackDiscardingThreshold: 20,
-  logbackMaxFlushTimeMs: 5000,
-  logbackNeverBlock: false,
-}
-
-const defaultDependencyParams: DependencyLayerParams = {
-  httpClients: [],
-  redis: { memoryGb: 8, shardCount: 1 },
-  database: {
-    engine: 'MySQL',
-    cpu: 8,
-    memoryGb: 16,
-    maxConnections: 500,
-    maxIops: 5000,
-    storageGb: 500,
-  },
-}
-
-const defaultDependencyConfig: DependencyLayerConfig = {
-  redisClient: 'lettuce',
-}
-
-const LAYER_LABELS: Record<LayerId, string> = {
-  client: '客户端层',
-  access: '接入网关层',
-  host: '宿主容器层',
-  runtime: '运行时层',
-  dependency: '依赖层',
-}
-
-const DEPENDENCY_KIND_LABELS: Record<DependencyKind, string> = {
-  redis: 'Redis',
-  database: '数据库',
-  http_api: '三方接口',
-  custom: '自定义依赖',
-}
 
 /** 默认拓扑为空，节点与连线均由用户拖入并自行连接 */
 function buildDefaultTopology(): Topology {
@@ -137,33 +44,33 @@ function computeLabel(opts: AddNodeOptions): string {
   if (opts.label) return opts.label
   if (opts.layerId === 'dependency' && opts.dependencyKind) {
     if (opts.dependencyKind === 'http_api' || opts.dependencyKind === 'custom') {
-      return opts.customLabel?.trim() || DEPENDENCY_KIND_LABELS[opts.dependencyKind]
+      return opts.customLabel?.trim() || getDependencyNodeTypeLabel(opts.dependencyKind)
     }
-    return DEPENDENCY_KIND_LABELS[opts.dependencyKind]
+    return getDependencyNodeTypeLabel(opts.dependencyKind)
   }
-  return LAYER_LABELS[opts.layerId]
+  return getLayerLabel(opts.layerId)
 }
 
 export const useTopologyStore = defineStore('topology', () => {
   const topology = ref<Topology>(buildDefaultTopology())
 
-  const clientParams = ref<ClientLayerParams>({ ...defaultClientParams })
-  const accessParams = ref<AccessLayerParams>({ ...defaultAccessParams })
+  const clientParams = ref<ClientLayerParams>(getDefaultParams('client') as ClientLayerParams)
+  const accessParams = ref<AccessLayerParams>(getDefaultParams('access') as AccessLayerParams)
 
-  const hostParams = ref<HostLayerParams>(JSON.parse(JSON.stringify(defaultHostParams)))
-  const hostConfig = ref<HostLayerConfig>(JSON.parse(JSON.stringify(defaultHostConfig)))
+  const hostParams = ref<HostLayerParams>(getDefaultParams('host') as HostLayerParams)
+  const hostConfig = ref<HostLayerConfig>(getDefaultConfig('host') as HostLayerConfig)
 
-  const runtimeParams = ref<RuntimeParams>({ ...defaultRuntimeParams })
-  const runtimeConfig = ref<RuntimeConfig>(JSON.parse(JSON.stringify(defaultRuntimeConfig)))
+  const runtimeParams = ref<RuntimeParams>(getDefaultParams('runtime') as RuntimeParams)
+  const runtimeConfig = ref<RuntimeConfig>(getDefaultConfig('runtime') as RuntimeConfig)
 
   const dependencyParams = ref<DependencyLayerParams>(
-    JSON.parse(JSON.stringify(defaultDependencyParams))
+    getDefaultParams('dependency') as DependencyLayerParams
   )
   const dependencyConfig = ref<DependencyLayerConfig>(
-    JSON.parse(JSON.stringify(defaultDependencyConfig))
+    getDefaultConfig('dependency') as DependencyLayerConfig
   )
 
-  const layerLabels = computed(() => LAYER_LABELS)
+  const layerLabels = computed(() => getLayerLabels())
 
   /** 按 nodes 顺序重建线性边（保留已有边的 vertices） */
   function syncEdgesFromOrder(): void {
@@ -235,20 +142,10 @@ export const useTopologyStore = defineStore('topology', () => {
     return node
   }
 
-  /** 层顺序（用于插入新层节点时确定位置） */
-  const LAYER_ORDER: LayerId[] = ['client', 'access', 'host', 'runtime', 'dependency']
-
-  /** 客户端/接入/宿主/运行时层在图中最多 1 个；依赖层无上限（由子节点拖入） */
-  const LAYER_MAX_COUNT: Record<'client' | 'access' | 'host' | 'runtime', number> = {
-    client: 1,
-    access: 1,
-    host: 1,
-    runtime: 1,
-  }
-
   /** 将“层”节点插入拓扑（不自动连线）；若该层已达上限则返回 null */
   function addLayerNode(layerId: 'client' | 'access' | 'host' | 'runtime'): TopologyNode | null {
-    const max = LAYER_MAX_COUNT[layerId]
+    const LAYER_ORDER = getLayerOrder()
+    const max = getLayerMaxCount(layerId)
     const current = topology.value.nodes.filter((n) => n.layerId === layerId).length
     if (current >= max) return null
     const orderIdx = LAYER_ORDER.indexOf(layerId)
@@ -261,7 +158,7 @@ export const useTopologyStore = defineStore('topology', () => {
     const node: TopologyNode = {
       id: nextNodeId(),
       layerId,
-      label: LAYER_LABELS[layerId],
+      label: getLayerLabel(layerId),
       nodeSource: 'user',
     }
     const nodes = [...list]
@@ -291,22 +188,22 @@ export const useTopologyStore = defineStore('topology', () => {
   }
 
   function resetClient() {
-    clientParams.value = { ...defaultClientParams }
+    clientParams.value = getDefaultParams('client') as ClientLayerParams
   }
 
   function resetHost() {
-    hostParams.value = JSON.parse(JSON.stringify(defaultHostParams))
-    hostConfig.value = JSON.parse(JSON.stringify(defaultHostConfig))
+    hostParams.value = getDefaultParams('host') as HostLayerParams
+    hostConfig.value = getDefaultConfig('host') as HostLayerConfig
   }
 
   function resetRuntime() {
-    runtimeParams.value = { ...defaultRuntimeParams }
-    runtimeConfig.value = JSON.parse(JSON.stringify(defaultRuntimeConfig))
+    runtimeParams.value = getDefaultParams('runtime') as RuntimeParams
+    runtimeConfig.value = getDefaultConfig('runtime') as RuntimeConfig
   }
 
   function resetDependency() {
-    dependencyParams.value = JSON.parse(JSON.stringify(defaultDependencyParams))
-    dependencyConfig.value = JSON.parse(JSON.stringify(defaultDependencyConfig))
+    dependencyParams.value = getDefaultParams('dependency') as DependencyLayerParams
+    dependencyConfig.value = getDefaultConfig('dependency') as DependencyLayerConfig
   }
 
   return {
@@ -334,4 +231,6 @@ export const useTopologyStore = defineStore('topology', () => {
   }
 })
 
-export { LAYER_LABELS, DEPENDENCY_KIND_LABELS }
+/** 兼容：层/依赖类型展示名（只读快照，扩展请用 registry） */
+export const LAYER_LABELS = getLayerLabels()
+export const DEPENDENCY_KIND_LABELS = getDependencyKindLabels()

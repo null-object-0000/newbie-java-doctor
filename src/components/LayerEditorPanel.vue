@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { LayerId } from '@/types/layers'
-import ClientLayerView from '@/views/ClientLayerView.vue'
-import AccessLayerView from '@/views/AccessLayerView.vue'
-import HostLayerView from '@/views/HostLayerView.vue'
-import ApplicationLayerView from '@/views/ApplicationLayerView.vue'
+import { getLayerLabel } from '@/registry/layers'
+import LayerEditorContent from '@/components/LayerEditorContent.vue'
 
-defineProps<{
+const props = defineProps<{
   layerId: LayerId
 }>()
 
@@ -17,19 +15,13 @@ defineEmits<{
 type Section = 'params' | 'config'
 const activeSection = ref<Section>('params')
 
-const layerTitles: Record<LayerId, string> = {
-  client: '客户端层',
-  access: '接入网关层',
-  host: '宿主容器层',
-  runtime: '运行时层',
-  dependency: '依赖层',
-}
+const layerTitle = computed(() => getLayerLabel(props.layerId))
 </script>
 
 <template>
   <div class="layer-editor-panel">
     <header class="panel-header">
-      <h2 class="panel-title">编辑：{{ layerTitles[layerId] }}</h2>
+      <h2 class="panel-title">编辑：{{ layerTitle }}</h2>
       <button type="button" class="panel-close" title="关闭" @click="$emit('close')">×</button>
     </header>
     <div class="panel-tabs">
@@ -51,11 +43,7 @@ const layerTitles: Record<LayerId, string> = {
       </button>
     </div>
     <div class="panel-body">
-      <ClientLayerView v-if="layerId === 'client'" :section="activeSection" />
-      <AccessLayerView v-else-if="layerId === 'access'" :section="activeSection" />
-      <HostLayerView v-else-if="layerId === 'host'" :section="activeSection" />
-      <ApplicationLayerView v-else-if="layerId === 'runtime'" only-tab="runtime" :section="activeSection" />
-      <ApplicationLayerView v-else-if="layerId === 'dependency'" only-tab="dependency" :section="activeSection" />
+      <LayerEditorContent :layer-id="layerId" :section="activeSection" />
     </div>
   </div>
 </template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { LayerId, DependencyKind } from '@/types/layers'
-import { LAYER_LABELS, DEPENDENCY_KIND_LABELS } from '@/stores/topology'
+import type { DependencyKind } from '@/types/layers'
+import { getLayers } from '@/registry/layers'
 
 /** 是否允许再拖入该层（客户端/接入/宿主/运行时各最多 1 个） */
 defineProps<{
@@ -9,58 +9,33 @@ defineProps<{
 
 /** 拖拽数据类型：整层（层下无节点时）或依赖层子节点 */
 type DragPayload =
-  | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime' }
+  | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime'; label: string }
   | { type: 'dependency'; kind: DependencyKind; label: string }
 
-/** 层配置：层 id、展示名、该层下可拖拽的子节点（空则层本身可拖） */
-const layers: {
-  layerId: LayerId
-  label: string
-  children: { kind: DependencyKind; label: string }[]
-}[] = [
-  { layerId: 'client', label: LAYER_LABELS.client, children: [] },
-  { layerId: 'access', label: LAYER_LABELS.access, children: [] },
-  { layerId: 'host', label: LAYER_LABELS.host, children: [] },
-  { layerId: 'runtime', label: LAYER_LABELS.runtime, children: [] },
-  {
-    layerId: 'dependency',
-    label: LAYER_LABELS.dependency,
-    children: [
-      { kind: 'redis', label: DEPENDENCY_KIND_LABELS.redis },
-      { kind: 'database', label: DEPENDENCY_KIND_LABELS.database },
-      { kind: 'http_api', label: DEPENDENCY_KIND_LABELS.http_api },
-      { kind: 'custom', label: DEPENDENCY_KIND_LABELS.custom },
-    ],
-  },
-]
+/** 层列表来自 registry，支持扩展 */
+const layers = getLayers().map((l) => ({
+  layerId: l.id,
+  label: l.label,
+  icon: l.icon,
+  children: (l.children ?? []).map((c) => ({ kind: c.kind, label: c.label })),
+}))
 
 /** 层下无节点：层本身可拖；有节点：仅子节点可拖。且需满足 canAddLayer 才能拖入该层。 */
 function isLayerDraggable(layer: (typeof layers)[number], canAddLayer: (id: 'client' | 'access' | 'host' | 'runtime') => boolean) {
   if (layer.children.length > 0) return false
   if (layer.layerId === 'dependency') return false
-  return canAddLayer(layer.layerId)
-}
-
-function getLayerIcon(layerId: LayerId): string {
-  const icons: Record<LayerId, string> = {
-    client: 'C',
-    access: 'G',
-    host: 'H',
-    runtime: 'J',
-    dependency: 'D',
-  }
-  return icons[layerId] ?? '•'
+  return canAddLayer(layer.layerId as 'client' | 'access' | 'host' | 'runtime')
 }
 
 function onDragStart(e: DragEvent, payload: DragPayload) {
   if (!e.dataTransfer) return
   e.dataTransfer.effectAllowed = 'copy'
   e.dataTransfer.setData('application/json', JSON.stringify(payload))
-  e.dataTransfer.setData('text/plain', payload.type === 'layer' ? LAYER_LABELS[payload.layerId] : payload.label)
+  e.dataTransfer.setData('text/plain', payload.label)
 }
 
-function onLayerDragStart(e: DragEvent, layerId: 'client' | 'access' | 'host' | 'runtime') {
-  onDragStart(e, { type: 'layer', layerId })
+function onLayerDragStart(e: DragEvent, layer: (typeof layers)[number]) {
+  onDragStart(e, { type: 'layer', layerId: layer.layerId as 'client' | 'access' | 'host' | 'runtime', label: layer.label })
 }
 
 function onChildDragStart(e: DragEvent, kind: DependencyKind, label: string) {
@@ -87,10 +62,10 @@ function onChildDragStart(e: DragEvent, kind: DependencyKind, label: string) {
             }"
             :draggable="isLayerDraggable(layer, canAddLayer)"
             @dragstart="
-              isLayerDraggable(layer, canAddLayer) && onLayerDragStart($event, layer.layerId)
+              isLayerDraggable(layer, canAddLayer) && onLayerDragStart($event, layer)
             "
           >
-            <span class="layer-icon">{{ getLayerIcon(layer.layerId) }}</span>
+            <span class="layer-icon">{{ layer.icon }}</span>
             <span class="layer-label">{{ layer.label }}</span>
             <span
               v-if="layer.children.length === 0 && layer.layerId !== 'dependency' && !canAddLayer(layer.layerId)"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import type { DependencyKind } from '@/types/layers'
-import { DEPENDENCY_KIND_LABELS } from '@/stores/topology'
+import { getDependencyNodeTypes } from '@/registry/layers'
 
 const props = defineProps<{
   visible: boolean
@@ -15,12 +15,10 @@ const emit = defineEmits<{
 const dependencyKind = ref<DependencyKind | ''>('redis')
 const customLabel = ref('')
 
-const dependencyKindOptions: { value: DependencyKind; label: string }[] = [
-  { value: 'redis', label: DEPENDENCY_KIND_LABELS.redis },
-  { value: 'database', label: DEPENDENCY_KIND_LABELS.database },
-  { value: 'http_api', label: DEPENDENCY_KIND_LABELS.http_api },
-  { value: 'custom', label: DEPENDENCY_KIND_LABELS.custom },
-]
+/** 依赖类型选项来自 registry，支持扩展 */
+const dependencyKindOptions = computed(() =>
+  getDependencyNodeTypes().map((c) => ({ value: c.kind as DependencyKind, label: c.label }))
+)
 
 const showCustomLabel = () =>
   dependencyKind.value === 'http_api' || dependencyKind.value === 'custom'
@@ -29,7 +27,8 @@ watch(
   () => props.visible,
   (v) => {
     if (v) {
-      dependencyKind.value = 'redis'
+      const types = getDependencyNodeTypes()
+      dependencyKind.value = (types[0]?.kind as DependencyKind) ?? ''
       customLabel.value = ''
     }
   }

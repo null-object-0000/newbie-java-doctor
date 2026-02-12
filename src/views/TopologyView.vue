@@ -3,6 +3,13 @@ import { ref, computed } from 'vue'
 import type { LayerId } from '@/types/layers'
 import { useTopologyStore } from '@/stores/topology'
 import { storeToRefs } from 'pinia'
+import {
+  getLayers,
+  getTopologyDisplayConfig,
+  getTopologyDisplayFieldLabel,
+  getTopologyDisplayValueLabel,
+} from '@/registry/layers'
+import { getByPath } from '@/registry/schemaBuild'
 import TopologyDiagram from '@/components/TopologyDiagram.vue'
 import NodeListPanel from '@/components/NodeListPanel.vue'
 import AddNodeModal from '@/components/AddNodeModal.vue'
@@ -10,7 +17,66 @@ import LayerEditorPanel from '@/components/LayerEditorPanel.vue'
 import type { TopologyNode } from '@/types/layers'
 
 const store = useTopologyStore()
-const { topology } = storeToRefs(store)
+const {
+  topology,
+  clientParams,
+  accessParams,
+  hostParams,
+  hostConfig,
+  runtimeParams,
+  runtimeConfig,
+  dependencyParams,
+  dependencyConfig,
+} = storeToRefs(store)
+
+function getLayerParams(layerId: LayerId): object {
+  switch (layerId) {
+    case 'client': return clientParams.value
+    case 'access': return accessParams.value
+    case 'host': return hostParams.value
+    case 'runtime': return runtimeParams.value
+    case 'dependency': return dependencyParams.value
+    default: return {}
+  }
+}
+
+function getLayerConfig(layerId: LayerId): object {
+  switch (layerId) {
+    case 'host': return hostConfig.value
+    case 'runtime': return runtimeConfig.value
+    case 'dependency': return dependencyConfig.value
+    default: return {}
+  }
+}
+
+/** 每层在拓扑图卡片上展示的字段（label + displayText，枚举已映射为选项描述） */
+const layerDisplayFields = computed(() => {
+  const out: Record<string, { label: string; displayText: string }[]> = {}
+  const layerIds = getLayers().map((l) => l.id)
+  for (const layerId of layerIds) {
+    const cfg = getTopologyDisplayConfig(layerId)
+    if (!cfg) continue
+    const rows: { label: string; displayText: string }[] = []
+    const params = getLayerParams(layerId as LayerId)
+    const config = getLayerConfig(layerId as LayerId)
+    for (const key of cfg.params ?? []) {
+      const value = getByPath(params, key)
+      rows.push({
+        label: getTopologyDisplayFieldLabel(layerId, 'params', key),
+        displayText: getTopologyDisplayValueLabel(layerId, 'params', key, value),
+      })
+    }
+    for (const key of cfg.config ?? []) {
+      const value = getByPath(config, key)
+      rows.push({
+        label: getTopologyDisplayFieldLabel(layerId, 'config', key),
+        displayText: getTopologyDisplayValueLabel(layerId, 'config', key, value),
+      })
+    }
+    if (rows.length) out[layerId] = rows
+  }
+  return out
+})
 
 type MiddleViewMode = 'graph' | 'json'
 const middleViewMode = ref<MiddleViewMode>('graph')
@@ -95,44 +161,24 @@ function onDropFromPalette(payload: DropPayload) {
       <div class="topology-main">
         <div class="middle-toolbar">
           <div class="mode-tabs">
-            <button
-              type="button"
-              class="mode-tab"
-              :class="{ active: middleViewMode === 'graph' }"
-              @click="middleViewMode = 'graph'"
-            >
+            <button type="button" class="mode-tab" :class="{ active: middleViewMode === 'graph' }"
+              @click="middleViewMode = 'graph'">
               拓扑图
             </button>
-            <button
-              type="button"
-              class="mode-tab"
-              :class="{ active: middleViewMode === 'json' }"
-              @click="middleViewMode = 'json'"
-            >
+            <button type="button" class="mode-tab" :class="{ active: middleViewMode === 'json' }"
+              @click="middleViewMode = 'json'">
               JSON
             </button>
           </div>
-          <button
-            v-if="middleViewMode === 'json'"
-            type="button"
-            class="copy-btn"
-            @click="copyJson"
-          >
+          <button v-if="middleViewMode === 'json'" type="button" class="copy-btn" @click="copyJson">
             复制
           </button>
         </div>
         <div class="middle-content">
-          <TopologyDiagram
-            v-show="middleViewMode === 'graph'"
-            :nodes="nodes"
-            :edges="edges"
-            @remove="onRemove"
-            @edit="onEdit"
-            @drop="onDropFromPalette"
-            @node-moved="onNodeMoved"
-            @edge-vertices-changed="onEdgeVerticesChanged"
-            @edge-connected="onEdgeConnected"
-          />
+          <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
+            :layer-display-fields="layerDisplayFields"
+            @remove="onRemove" @edit="onEdit" @drop="onDropFromPalette" @node-moved="onNodeMoved"
+            @edge-vertices-changed="onEdgeVerticesChanged" @edge-connected="onEdgeConnected" />
           <div v-show="middleViewMode === 'json'" class="json-view">
             <pre class="json-pre"><code>{{ topologyJson }}</code></pre>
           </div>
@@ -140,10 +186,7 @@ function onDropFromPalette(payload: DropPayload) {
       </div>
       <aside class="panel-right">
         <div v-if="editingLayerId" class="panel-right-inner">
-          <LayerEditorPanel
-            :layer-id="editingLayerId"
-            @close="editingLayerId = null"
-          />
+          <LayerEditorPanel :layer-id="editingLayerId" @close="editingLayerId = null" />
         </div>
         <div v-else class="panel-placeholder">
           <p>点击拓扑图中的节点可在此编辑该层属性</p>
@@ -151,11 +194,7 @@ function onDropFromPalette(payload: DropPayload) {
       </aside>
     </div>
 
-    <AddNodeModal
-      :visible="addModalVisible"
-      @close="closeAddModal"
-      @submit="onAddSubmit"
-    />
+    <AddNodeModal :visible="addModalVisible" @close="closeAddModal" @submit="onAddSubmit" />
   </div>
 </template>
 

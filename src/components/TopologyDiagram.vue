@@ -1,20 +1,26 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { Graph, Shape, Snapline } from '@antv/x6'
+import { getLayerIcon, getLayerTheme } from '@/registry/layers'
 import type { TopologyNode, TopologyEdge, DependencyKind } from '@/types/layers'
 
 const CARD_WIDTH = 260
-const CARD_HEIGHT = 96
+const CARD_HEIGHT = 128
 const GAP = 28
 const PADDING = 40
 const PORT_R = 3
 const COLOR_PORT = '#C2C8D5'
 const COLOR_PORT_ACTIVE = '#5F95FF'
 
-const props = defineProps<{
-  nodes: TopologyNode[]
-  edges: TopologyEdge[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    nodes: TopologyNode[]
+    edges: TopologyEdge[]
+    /** 每层在拓扑卡片上展示的字段（label + displayText，枚举已映射为描述） */
+    layerDisplayFields?: Record<string, { label: string; displayText: string }[]>
+  }>(),
+  { layerDisplayFields: () => ({}) }
+)
 
 const emit = defineEmits<{
   remove: [nodeId: string]
@@ -33,15 +39,6 @@ const containerRef = ref<HTMLElement | null>(null)
 /** 仅位置变更时跳过整图重绘，避免拖拽时“复制出一份”的错觉 */
 const skipFullSyncRef = ref(false)
 let graph: Graph | null = null
-
-// 按层级主题色（参考官方 agent-card）
-const LAYER_THEME: Record<string, string> = {
-  client: 'blue',
-  access: 'gray',
-  host: 'green',
-  runtime: 'orange',
-  dependency: 'blue',
-}
 
 function getNodePosition(index: number) {
   return {
@@ -104,11 +101,11 @@ function registerShapes() {
     height: CARD_HEIGHT,
     effect: ['data'],
     html(cell) {
-      const data = cell.getData() as { raw?: TopologyNode }
+      const data = cell.getData() as { raw?: TopologyNode; displayFields?: { label: string; displayText: string }[] }
       const node = data?.raw
       if (!node) return document.createElement('div')
 
-      const theme = LAYER_THEME[node.layerId] ?? 'blue'
+      const theme = getLayerTheme(node.layerId)
       const wrap = document.createElement('div')
       wrap.className = `topology-card topology-card-${theme}`
       wrap.setAttribute('draggable', 'false')
@@ -142,20 +139,23 @@ function registerShapes() {
       header.appendChild(title)
       header.appendChild(actions)
       wrap.appendChild(header)
+
+      const displayFields = data?.displayFields ?? []
+      if (displayFields.length > 0) {
+        const body = document.createElement('div')
+        body.className = 'topology-card-body'
+        for (const row of displayFields) {
+          const line = document.createElement('div')
+          line.className = 'topology-card-field'
+          line.textContent = `${row.label}: ${row.displayText}`
+          body.appendChild(line)
+        }
+        wrap.appendChild(body)
+      }
+
       return wrap
     },
   })
-}
-
-function getLayerIcon(layerId: string): string {
-  const icons: Record<string, string> = {
-    client: 'C',
-    access: 'G',
-    host: 'H',
-    runtime: 'J',
-    dependency: 'D',
-  }
-  return icons[layerId] ?? '•'
 }
 
 function handleNodeClick(_args: { e: MouseEvent; node: { id: string; getData: () => { raw?: TopologyNode } } }) {
@@ -256,6 +256,7 @@ function syncGraph() {
 
   graph.clearCells()
 
+  const displayFieldsMap = props.layerDisplayFields ?? {}
   nodes.forEach((node, i) => {
     const pos =
       node.x != null && node.y != null
@@ -268,7 +269,7 @@ function syncGraph() {
       y: pos.y,
       width: CARD_WIDTH,
       height: CARD_HEIGHT,
-      data: { raw: node },
+      data: { raw: node, displayFields: displayFieldsMap[node.layerId] ?? [] },
       ports: PORTS,
       movable: true,
     })
@@ -401,7 +402,7 @@ onUnmounted(() => {
 })
 
 watch(
-  () => [props.nodes, props.edges],
+  () => [props.nodes, props.edges, props.layerDisplayFields],
   () => syncGraph(),
   { deep: true },
 )
@@ -480,13 +481,14 @@ watch(
   border: 1px solid #5f95ff;
   border-radius: 8px;
   box-sizing: border-box;
-  padding: 12px;
+  padding: 12px 12px 14px;
   width: 100%;
   height: 100%;
   background: #fff;
   gap: 8px;
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
+  overflow: hidden;
 }
 
 .topology-card:hover {
@@ -565,5 +567,25 @@ watch(
 .topology-card-actions .op:hover {
   background: var(--bg-hover);
   color: var(--accent);
+}
+
+.topology-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 6px;
+  padding-bottom: 2px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.topology-card-field {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
