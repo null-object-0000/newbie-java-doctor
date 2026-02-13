@@ -183,11 +183,22 @@ function canAddLayer(layerId: 'client' | 'access' | 'host' | 'runtime') {
   return !topology.value.nodes.some((n) => n.layerId === layerId)
 }
 
+/** 当前选中节点 id（与拓扑图选中态同步） */
+const selectedNodeId = computed(() => editingNode.value?.id ?? null)
+
+function onSelect(node: TopologyNode | null) {
+  editingNode.value = node
+}
+
 function onEdit(node: TopologyNode) {
   editingNode.value = node
 }
 
 function onRemove(nodeId: string) {
+  // 如果删除的是正在编辑的节点，清空编辑状态
+  if (editingNode.value?.id === nodeId) {
+    editingNode.value = null
+  }
   store.removeNode(nodeId)
 }
 
@@ -204,6 +215,10 @@ function onEdgeConnected(payload: { source: string; target: string }) {
   if (!result.ok) {
     message.warning(result.message)
   }
+}
+
+function onEdgeRemoved(edgeId: string) {
+  store.removeEdge(edgeId)
 }
 
 type DropPayload =
@@ -259,9 +274,10 @@ function onDropFromPalette(payload: DropPayload) {
           <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
             :layer-display-fields="layerDisplayFields" :node-port-config="nodePortConfig"
             :visible="middleViewMode === 'graph'" :can-undo="canUndo" :can-redo="canRedo"
-            @remove="onRemove" @edit="onEdit" @drop="onDropFromPalette"
+            :selected-node-id="selectedNodeId"
+            @remove="onRemove" @edit="onEdit" @select="onSelect" @drop="onDropFromPalette"
             @node-moved="onNodeMoved" @edge-vertices-changed="onEdgeVerticesChanged"
-            @edge-connected="onEdgeConnected" @undo="store.undo" @redo="store.redo" />
+            @edge-connected="onEdgeConnected" @edge-removed="onEdgeRemoved" @undo="store.undo" @redo="store.redo" />
           <div v-show="middleViewMode === 'json'" class="json-view">
             <NCode :code="topologyJson" language="json" word-wrap />
           </div>

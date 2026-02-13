@@ -1,29 +1,29 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { Graph, Shape, Snapline, Keyboard } from '@antv/x6'
-import { NButton, NButtonGroup, NTooltip } from 'naive-ui'
+import { NButton, NTooltip, NDropdown } from 'naive-ui'
 import { getLayerIcon, getLayerTheme } from '@/registry/layers'
 import type { TopologyNode, TopologyEdge, DependencyKind } from '@/types/layers'
 
+// ========== Constants ==========
 const CARD_WIDTH = 260
 const CARD_HEIGHT = 128
 const GAP = 28
 /** client 与 server 之间的水平间距（预留连线上显示内容） */
 const GROUP_CLIENT_SERVER_GAP = 72
 const PADDING = 40
-const PORT_R = 3
+const PORT_R = 4
 const COLOR_PORT = '#C2C8D5'
 
-/** 连线含义与颜色：不同语义用不同颜色区分（需对外引用时可抽到单独 constants 文件） */
+/** 连线含义与颜色 */
 const EDGE_COLORS = {
-  /** 默认：层与层之间的数据/请求流向 */
   default: '#5F95FF',
-  /** 依赖组内：客户端 → 服务端（应用连接依赖） */
   group_client_server: '#52c41a',
 } as const
 
 const COLOR_PORT_ACTIVE = EDGE_COLORS.default
 
+// ========== Props ==========
 const props = withDefaults(
   defineProps<{
     nodes: TopologyNode[]
@@ -35,13 +35,24 @@ const props = withDefaults(
     /** 撤销/重做由外部（完整 JSON 状态）提供 */
     canUndo?: boolean
     canRedo?: boolean
+    /** 当前选中的节点 id（与编辑面板同步） */
+    selectedNodeId?: string | null
   }>(),
-  { layerDisplayFields: () => ({}), nodePortConfig: () => ({}), visible: true, canUndo: false, canRedo: false }
+  {
+    layerDisplayFields: () => ({}),
+    nodePortConfig: () => ({}),
+    visible: true,
+    canUndo: false,
+    canRedo: false,
+    selectedNodeId: null,
+  },
 )
 
+// ========== Emits ==========
 const emit = defineEmits<{
   remove: [nodeId: string]
   edit: [node: TopologyNode]
+  select: [node: TopologyNode | null]
   drop: [
     payload:
       | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime' }
@@ -50,10 +61,12 @@ const emit = defineEmits<{
   nodeMoved: [payload: { nodeId: string; x: number; y: number }]
   edgeVerticesChanged: [payload: { edgeId: string; vertices: { x: number; y: number }[] }]
   edgeConnected: [payload: { source: string; target: string }]
+  edgeRemoved: [edgeId: string]
   undo: []
   redo: []
 }>()
 
+// ========== Refs & State ==========
 const containerRef = ref<HTMLElement | null>(null)
 /**
  * node:moved 之后只需同步位置，不需要重建 HTML 内容。
@@ -62,6 +75,24 @@ const containerRef = ref<HTMLElement | null>(null)
 const positionOnlyRef = ref(false)
 let graph: Graph | null = null
 
+// ---- Selection state ----
+const selectedEdgeId = ref<string | null>(null)
+const hasSelection = computed(() => !!props.selectedNodeId || !!selectedEdgeId.value)
+
+// ---- Context Menu state ----
+type CtxOption =
+  | { label: string; key: string; disabled?: boolean }
+  | { type: 'divider'; key: string }
+
+const ctxMenu = reactive({
+  show: false,
+  x: 0,
+  y: 0,
+  options: [] as CtxOption[],
+})
+let ctxTarget: { type: 'node' | 'edge' | 'blank'; id?: string } = { type: 'blank' }
+
+// ========== Position Calculation ==========
 function getNodePosition(index: number) {
   return {
     x: PADDING,
@@ -69,7 +100,7 @@ function getNodePosition(index: number) {
   }
 }
 
-/** 为依赖层同组（dependencyGroupId）节点计算并排布局，其余节点按行占位；返回 nodeId -> { x, y } */
+/** 为依赖层同组（dependencyGroupId）节点计算并排布局，其余节点按行占位 */
 function buildDependencyPositionMap(
   dataNodes: TopologyNode[],
 ): Record<string, { x: number; y: number }> {
@@ -119,7 +150,7 @@ function buildDependencyPositionMap(
   return map
 }
 
-// ---- 端口配置 ----
+// ========== Port Configuration ==========
 const basePortAttrs = {
   r: PORT_R,
   magnet: true,
@@ -170,6 +201,7 @@ function getPortsForNode(nodeId: string) {
   }
 }
 
+// ========== Shape Registration ==========
 const SHAPE_NAME = 'topology-node'
 const EDGE_SHAPE = 'topology-edge'
 let shapeRegistered = false
@@ -199,7 +231,11 @@ function registerShapes() {
     height: CARD_HEIGHT,
     effect: ['data'],
     html(cell) {
-      const data = cell.getData() as { raw?: TopologyNode; displayFields?: { label: string; displayText: string }[] }
+      const data = cell.getData() as {
+        raw?: TopologyNode
+        displayFields?: { label: string; displayText: string }[]
+        selected?: boolean
+      }
       const node = data?.raw
       if (!node) return document.createElement('div')
 
@@ -209,8 +245,11 @@ function registerShapes() {
       wrap.setAttribute('draggable', 'false')
       wrap.addEventListener('dragstart', (e) => e.preventDefault())
       if (node.nodeSource === 'user') wrap.classList.add('user')
-      if (node.dependencyRole === 'server' && node.dependencyGroupId) wrap.classList.add('topology-card-follows-client')
+      if (data?.selected) wrap.classList.add('topology-card-selected')
+      if (node.dependencyRole === 'server' && node.dependencyGroupId)
+        wrap.classList.add('topology-card-follows-client')
 
+      // ---- Header ----
       const header = document.createElement('div')
       header.className = 'topology-card-header'
 
@@ -225,12 +264,15 @@ function registerShapes() {
       const actions = document.createElement('div')
       actions.className = 'topology-card-actions'
 
-      const canRemove = node.nodeSource === 'user' && !(node.dependencyRole === 'server' && node.dependencyGroupId)
+      const canRemove =
+        node.nodeSource === 'user' &&
+        !(node.dependencyRole === 'server' && node.dependencyGroupId)
       if (canRemove) {
         const removeBtn = document.createElement('span')
-        removeBtn.className = 'op'
-        removeBtn.title = '删除节点'
-        removeBtn.textContent = '\u2716\uFE0F'
+        removeBtn.className = 'op op-danger'
+        removeBtn.title = '删除节点 (Delete)'
+        removeBtn.innerHTML =
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
         removeBtn.dataset.action = 'remove'
         actions.appendChild(removeBtn)
       }
@@ -240,6 +282,7 @@ function registerShapes() {
       header.appendChild(actions)
       wrap.appendChild(header)
 
+      // ---- Body: display fields ----
       const displayFields = data?.displayFields ?? []
       if (displayFields.length > 0) {
         const body = document.createElement('div')
@@ -258,20 +301,147 @@ function registerShapes() {
   })
 }
 
-function handleNodeClick(_args: { e: MouseEvent; node: { id: string; getData: () => { raw?: TopologyNode } } }) {
-  const { e, node } = _args as unknown as { e: MouseEvent; node: { id: string; getData: () => { raw?: TopologyNode } } }
+// ========== Node Click Handler ==========
+function handleNodeClick(_args: {
+  e: MouseEvent
+  node: { id: string; getData: () => { raw?: TopologyNode } }
+}) {
+  const { e, node } = _args as unknown as {
+    e: MouseEvent
+    node: { id: string; getData: () => { raw?: TopologyNode } }
+  }
   const target = e.target as HTMLElement
   const data = node.getData()
   const raw = data?.raw
+
+  // 点击节点时清除边选中
+  selectEdge(null)
 
   if (target.closest('[data-action="remove"]')) {
     if (raw?.id) emit('remove', raw.id)
     return
   }
-  if (raw) emit('edit', raw)
+  if (raw) {
+    emit('select', raw)
+    emit('edit', raw)
+  }
 }
 
-// ---- 端口工具函数 ----
+/** 连线选中时显示的删除按钮配置（仅选中时显示） */
+const EDGE_REMOVE_TOOL = [{ name: 'button-remove', args: { distance: 20 } }]
+
+// ========== Edge Selection ==========
+function selectEdge(edgeId: string | null) {
+  if (!graph) return
+  // 取消之前的选中：恢复线宽并移除删除按钮
+  if (selectedEdgeId.value) {
+    const prev = graph.getCellById(selectedEdgeId.value)
+    if (prev && graph.isEdge(prev)) {
+      prev.setAttrByPath('line/strokeWidth', 2)
+      ;(prev as unknown as { setTools: (t: unknown[]) => void }).setTools([])
+    }
+  }
+  selectedEdgeId.value = edgeId
+  // 设置新的选中：加粗并显示删除按钮
+  if (edgeId) {
+    const edge = graph.getCellById(edgeId)
+    if (edge && graph.isEdge(edge)) {
+      edge.setAttrByPath('line/strokeWidth', 3)
+      ;(edge as unknown as { setTools: (t: unknown[]) => void }).setTools(EDGE_REMOVE_TOOL)
+    }
+  }
+}
+
+// ========== Context Menu ==========
+function showNodeContextMenu(e: MouseEvent, nodeId: string) {
+  const raw = props.nodes.find((n) => n.id === nodeId)
+  ctxTarget = { type: 'node', id: nodeId }
+  const canRemove =
+    raw?.nodeSource === 'user' &&
+    !(raw?.dependencyRole === 'server' && raw?.dependencyGroupId)
+  ctxMenu.options = [
+    { label: '编辑属性', key: 'edit-node' },
+    { type: 'divider', key: 'd1' },
+    { label: '删除节点', key: 'delete-node', disabled: !canRemove },
+  ]
+  ctxMenu.x = e.clientX
+  ctxMenu.y = e.clientY
+  ctxMenu.show = true
+}
+
+function showEdgeContextMenu(e: MouseEvent, edgeId: string) {
+  ctxTarget = { type: 'edge', id: edgeId }
+  ctxMenu.options = [{ label: '删除连线', key: 'delete-edge' }]
+  ctxMenu.x = e.clientX
+  ctxMenu.y = e.clientY
+  ctxMenu.show = true
+}
+
+function showBlankContextMenu(e: MouseEvent) {
+  ctxTarget = { type: 'blank' }
+  ctxMenu.options = [
+    { label: '适应画布', key: 'fit-content' },
+    { label: '重置缩放', key: 'reset-zoom' },
+  ]
+  ctxMenu.x = e.clientX
+  ctxMenu.y = e.clientY
+  ctxMenu.show = true
+}
+
+function onCtxMenuSelect(key: string) {
+  ctxMenu.show = false
+  switch (key) {
+    case 'edit-node': {
+      const node = props.nodes.find((n) => n.id === ctxTarget.id)
+      if (node) {
+        emit('select', node)
+        emit('edit', node)
+      }
+      break
+    }
+    case 'delete-node': {
+      if (ctxTarget.id) emit('remove', ctxTarget.id)
+      break
+    }
+    case 'delete-edge': {
+      if (ctxTarget.id) {
+        emit('edgeRemoved', ctxTarget.id)
+        if (selectedEdgeId.value === ctxTarget.id) selectEdge(null)
+      }
+      break
+    }
+    case 'fit-content':
+      fitContent()
+      break
+    case 'reset-zoom':
+      resetView()
+      break
+  }
+}
+
+function onCtxMenuClickOutside() {
+  ctxMenu.show = false
+}
+
+// ========== Delete selected ==========
+function deleteSelected() {
+  if (selectedEdgeId.value) {
+    emit('edgeRemoved', selectedEdgeId.value)
+    selectEdge(null)
+    return
+  }
+  if (props.selectedNodeId) {
+    const node = props.nodes.find((n) => n.id === props.selectedNodeId)
+    if (
+      node?.nodeSource === 'user' &&
+      !(node.dependencyRole === 'server' && node.dependencyGroupId)
+    ) {
+      emit('remove', props.selectedNodeId)
+    }
+  }
+}
+
+// ========== Port Utility Functions ==========
 function isPortConnected(nodeId: string, portId: string): boolean {
   if (!graph) return false
   const node = graph.getCellById(nodeId)
@@ -284,12 +454,12 @@ function isPortConnected(nodeId: string, portId: string): boolean {
   )
 }
 
-type NodeWithPorts = { getPorts: () => { id: string }[]; setPortProp: (a: string, b: string, c: string) => void }
+type NodeWithPorts = {
+  getPorts: () => { id: string }[]
+  setPortProp: (a: string, b: string, c: string) => void
+}
 
-function hasPort(
-  node: ReturnType<Graph['getCellById']>,
-  portId: string,
-): boolean {
+function hasPort(node: ReturnType<Graph['getCellById']>, portId: string): boolean {
   if (!node || !graph?.isNode(node)) return false
   const n = node as unknown as NodeWithPorts
   const ports = n.getPorts?.()
@@ -320,7 +490,10 @@ function setPortColor(
   n.setPortProp(portId, 'attrs/circle/stroke', color)
 }
 
-function showNodePorts(node: { id: string; getPorts: () => { id: string }[] }, show: boolean) {
+function showNodePorts(
+  node: { id: string; getPorts: () => { id: string }[] },
+  show: boolean,
+) {
   if (!graph) return
   const cell = graph.getCellById(node.id)
   if (!cell || !graph.isNode(cell)) return
@@ -339,7 +512,7 @@ function showNodePorts(node: { id: string; getPorts: () => { id: string }[] }, s
   }
 }
 
-// ---- 核心：增量同步（永远不 clearCells，只增删改差异部分） ----
+// ========== Core: Incremental Sync ==========
 function syncGraph() {
   if (!graph || !containerRef.value) return
   doSyncGraph()
@@ -352,11 +525,11 @@ function doSyncGraph() {
   const dataEdges = props.edges
   const displayFieldsMap = props.layerDisplayFields ?? {}
 
-  // --- 同步节点 ---
+  // --- Sync Nodes ---
   const dataNodeIds = new Set(dataNodes.map((n) => n.id))
   const graphNodes = graph.getNodes()
 
-  // 1) 删除图上多余的节点（在图中但不在数据里）
+  // 1) 删除图上多余的节点
   for (const gn of graphNodes) {
     if (!dataNodeIds.has(gn.id)) {
       graph.removeCell(gn)
@@ -370,19 +543,26 @@ function doSyncGraph() {
   dataNodes.forEach((node, i) => {
     const pos =
       dependencyPositionMap[node.id] ??
-      (node.x != null && node.y != null
-        ? { x: node.x, y: node.y }
-        : getNodePosition(i))
+      (node.x != null && node.y != null ? { x: node.x, y: node.y } : getNodePosition(i))
     const existing = graph!.getCellById(node.id)
     const isServerFollowingClient =
       node.dependencyRole === 'server' && node.dependencyGroupId != null
+    const isSelected = node.id === props.selectedNodeId
     if (existing && graph!.isNode(existing)) {
       existing.setPosition(pos.x, pos.y)
-      if (typeof (existing as { setMovable?: (v: boolean) => void }).setMovable === 'function') {
-        (existing as { setMovable: (v: boolean) => void }).setMovable(!isServerFollowingClient)
+      if (
+        typeof (existing as unknown as { setMovable?: (v: boolean) => void }).setMovable === 'function'
+      ) {
+        ;(existing as unknown as { setMovable: (v: boolean) => void }).setMovable(
+          !isServerFollowingClient,
+        )
       }
       if (!positionOnlyRef.value) {
-        existing.setData({ raw: node, displayFields: displayFieldsMap[node.id] ?? [] })
+        existing.setData({
+          raw: node,
+          displayFields: displayFieldsMap[node.id] ?? [],
+          selected: isSelected,
+        })
       }
     } else {
       graph!.addNode({
@@ -392,7 +572,11 @@ function doSyncGraph() {
         y: pos.y,
         width: CARD_WIDTH,
         height: CARD_HEIGHT,
-        data: { raw: node, displayFields: displayFieldsMap[node.id] ?? [] },
+        data: {
+          raw: node,
+          displayFields: displayFieldsMap[node.id] ?? [],
+          selected: isSelected,
+        },
         ports: getPortsForNode(node.id),
         movable: !isServerFollowingClient,
       })
@@ -400,7 +584,7 @@ function doSyncGraph() {
     }
   })
 
-  // --- 同步边 ---
+  // --- Sync Edges ---
   const dataEdgeIds = new Set(dataEdges.map((e) => e.id))
   const graphEdges = graph.getEdges()
 
@@ -411,9 +595,9 @@ function doSyncGraph() {
     }
   }
 
-  /** 同组 client→server 的边：client 用 right 端口，server 无端口用 anchor left；其余边使用下→上 */
+  /** 同组 client->server 的边 */
   function getEdgeEndpoints(edge: TopologyEdge): {
-    source: { cell: string; port: string } | { cell: string; port: string }
+    source: { cell: string; port: string }
     target: { cell: string; port: string } | { cell: string; anchor: { name: string } }
     isGroupEdge: boolean
   } {
@@ -438,12 +622,13 @@ function doSyncGraph() {
     }
   }
 
-  /** 按语义返回连线颜色（与 EDGE_COLORS 一致） */
   function getEdgeColor(edge: TopologyEdge): string {
-    return getEdgeEndpoints(edge).isGroupEdge ? EDGE_COLORS.group_client_server : EDGE_COLORS.default
+    return getEdgeEndpoints(edge).isGroupEdge
+      ? EDGE_COLORS.group_client_server
+      : EDGE_COLORS.default
   }
 
-  // 2) 添加缺失的边 / 同步已有边的颜色与端点（server 无端口时用 anchor）
+  // 2) 添加缺失的边 / 同步已有边
   for (const edge of dataEdges) {
     const stroke = getEdgeColor(edge)
     const { source, target, isGroupEdge } = getEdgeEndpoints(edge)
@@ -456,6 +641,7 @@ function doSyncGraph() {
         target,
         vertices: edge.vertices ?? [],
         connector: { name: 'smooth', args: { direction: isGroupEdge ? 'H' : 'V' } },
+        tools: [], // 删除按钮仅在选中该连线时显示，见 selectEdge
         attrs: {
           line: {
             stroke,
@@ -468,13 +654,13 @@ function doSyncGraph() {
     } else {
       existing.setAttrByPath('line/stroke', stroke)
       if (isGroupEdge) {
-        existing.setSource(source)
-        existing.setTarget(target)
+        ;(existing as unknown as { setSource: (s: typeof source) => void }).setSource(source)
+        ;(existing as unknown as { setTarget: (t: typeof target) => void }).setTarget(target)
       }
     }
   }
 
-  // --- 端口激活色（与连线语义一致；server 无端口故不设置）---
+  // --- Port active colors ---
   dataEdges.forEach((edge) => {
     const src = graph!.getCellById(edge.source)
     const tgt = graph!.getCellById(edge.target)
@@ -505,9 +691,18 @@ function doSyncGraph() {
 
   positionOnlyRef.value = false
   if (addedNew) graph.centerContent()
+
+  // 若当前有选中的连线，确保其显示删除按钮（sync 可能重建边）
+  if (selectedEdgeId.value) {
+    const sel = graph.getCellById(selectedEdgeId.value)
+    if (sel && graph.isEdge(sel)) {
+      sel.setAttrByPath('line/strokeWidth', 3)
+      ;(sel as unknown as { setTools: (t: unknown[]) => void }).setTools(EDGE_REMOVE_TOOL)
+    }
+  }
 }
 
-// ---- 缩放 ----
+// ========== Zoom & View ==========
 function zoomIn() {
   if (graph) graph.zoom(0.2)
 }
@@ -523,6 +718,10 @@ function resetView() {
   }
 }
 
+function fitContent() {
+  if (graph) graph.zoomToFit({ padding: 40, maxScale: 1.5 })
+}
+
 function onUndo() {
   if (props.canUndo) emit('undo')
 }
@@ -531,7 +730,7 @@ function onRedo() {
   if (props.canRedo) emit('redo')
 }
 
-// ---- 拖拽 drop（只接受节点列表） ----
+// ========== Drag & Drop ==========
 const PALETTE_DROP_MARKER = 'application/x-java-doctor-palette'
 
 function onDragOver(e: DragEvent) {
@@ -541,7 +740,6 @@ function onDragOver(e: DragEvent) {
 
 function onDrop(e: DragEvent) {
   e.preventDefault()
-  // 只接受从节点列表（NodeListPanel）发起的拖拽，其它 drop 一律忽略
   if (!e.dataTransfer?.getData(PALETTE_DROP_MARKER)) return
   const raw = e.dataTransfer.getData('application/json')
   if (!raw) return
@@ -552,7 +750,11 @@ function onDrop(e: DragEvent) {
     if (payload.type === 'layer' && payload.layerId) {
       if (props.nodes.some((n) => n.layerId === payload.layerId)) return
       emit('drop', { type: 'layer', layerId: payload.layerId })
-    } else if (payload.type === 'dependency' && payload.kind != null && payload.label != null) {
+    } else if (
+      payload.type === 'dependency' &&
+      payload.kind != null &&
+      payload.label != null
+    ) {
       emit('drop', { type: 'dependency', kind: payload.kind, label: payload.label })
     }
   } catch {
@@ -560,8 +762,15 @@ function onDrop(e: DragEvent) {
   }
 }
 
-// ---- 消除 passive 警告：X6 内部对 touchstart/mousewheel 未传 passive ----
-const PASSIVE_TYPES = new Set(['touchstart', 'touchmove', 'touchend', 'mousewheel', 'wheel'])
+// ========== Passive Event Listener Patch ==========
+const PASSIVE_TYPES = new Set([
+  'touchstart',
+  'touchmove',
+  'touchend',
+  'mousewheel',
+  'wheel',
+])
+
 function patchPassiveEventListeners(el: HTMLElement) {
   if ((el as { __passivePatched?: boolean }).__passivePatched) return
   ;(el as { __passivePatched?: boolean }).__passivePatched = true
@@ -577,11 +786,11 @@ function patchPassiveEventListeners(el: HTMLElement) {
     orig(type, listener, usePassive ? { passive: true } : options)
   } as typeof el.addEventListener
 }
+
 let passivePatchObserver: MutationObserver | null = null
-/** 对容器及其后续动态添加的子节点都加上 passive 补丁（X6 会在内部创建子 div 并绑定 wheel） */
+
 function patchPassiveForContainerAndDescendants(container: HTMLElement) {
   patchPassiveEventListeners(container)
-  // 同步劫持 appendChild/insertBefore，在子节点挂载前就打补丁，避免 X6 先绑定 wheel 再被 MutationObserver 补丁（异步太晚）
   const origAppend = container.appendChild.bind(container)
   container.appendChild = function <T extends Node>(child: T): T {
     if (child instanceof HTMLElement) {
@@ -593,7 +802,10 @@ function patchPassiveForContainerAndDescendants(container: HTMLElement) {
     return origAppend(child) as T
   }
   const origInsert = container.insertBefore.bind(container)
-  container.insertBefore = function <T extends Node>(newChild: T, refChild: Node | null): T {
+  container.insertBefore = function <T extends Node>(
+    newChild: T,
+    refChild: Node | null,
+  ): T {
     if (newChild instanceof HTMLElement) {
       patchPassiveEventListeners(newChild)
       newChild.querySelectorAll?.('*')?.forEach((el) => {
@@ -617,12 +829,11 @@ function patchPassiveForContainerAndDescendants(container: HTMLElement) {
   passivePatchObserver.observe(container, { childList: true, subtree: true })
 }
 
-// ---- 生命周期 ----
+// ========== Lifecycle ==========
 onMounted(() => {
   if (!containerRef.value) return
 
   registerShapes()
-
   patchPassiveForContainerAndDescendants(containerRef.value)
 
   graph = new Graph({
@@ -636,7 +847,59 @@ onMounted(() => {
       maxScale: 3,
     },
     background: { color: '#fafafa' },
-    interacting: ((_graph: import('@antv/x6').Graph, cellView: import('@antv/x6').CellView | undefined) => {
+    // 连线配置：改善端口连接体验
+    connecting: {
+      snap: { radius: 30 },
+      allowBlank: false,
+      allowLoop: false,
+      allowMulti: false,
+      highlight: true,
+      connector: { name: 'smooth' },
+      connectionPoint: 'anchor',
+      createEdge() {
+        return graph!.createEdge({
+          shape: 'edge',
+          attrs: {
+            line: {
+              stroke: EDGE_COLORS.default,
+              strokeWidth: 2,
+              strokeDasharray: '5 5',
+              targetMarker: { name: 'block', size: 8 },
+            },
+          },
+        })
+      },
+      validateMagnet({ magnet }) {
+        return magnet?.getAttribute('magnet') !== 'false'
+      },
+      validateConnection(args) {
+        const sourceCell = (args as { sourceCell?: { id: string } | null }).sourceCell
+        const targetCell = (args as { targetCell?: { id: string } | null }).targetCell
+        if (!sourceCell?.id || !targetCell?.id) return false
+        if (sourceCell.id === targetCell.id) return false
+        return !props.edges.some(
+          (e) => e.source === sourceCell.id && e.target === targetCell.id,
+        )
+      },
+    },
+    // 端口磁吸高亮
+    highlighting: {
+      magnetAdsorbed: {
+        name: 'stroke',
+        args: {
+          padding: 4,
+          attrs: {
+            strokeWidth: 4,
+            stroke: '#5F95FF',
+            opacity: 0.6,
+          },
+        },
+      },
+    },
+    interacting: ((
+      _graph: import('@antv/x6').Graph,
+      cellView: import('@antv/x6').CellView | undefined,
+    ) => {
       if (!cellView?.cell) {
         return {
           nodeMovable: true,
@@ -647,16 +910,15 @@ onMounted(() => {
         }
       }
       const cell = cellView.cell
-      // 优先用 props.nodes 判断，避免 getData 未同步导致 server 仍可拖
       const dataNode = props.nodes.find((n) => n.id === cell.id)
       const isServerNode =
         cell.isNode?.() &&
         (dataNode
           ? dataNode.dependencyRole === 'server' && dataNode.dependencyGroupId != null
-          : !!(
-              (cell.getData?.() as { raw?: TopologyNode } | undefined)?.raw?.dependencyRole ===
-                'server' && (cell.getData?.() as { raw?: TopologyNode } | undefined)?.raw?.dependencyGroupId
-            ))
+          : !!((cell.getData?.() as { raw?: TopologyNode } | undefined)?.raw
+              ?.dependencyRole === 'server' &&
+              (cell.getData?.() as { raw?: TopologyNode } | undefined)?.raw
+                ?.dependencyGroupId))
       return {
         nodeMovable: !isServerNode,
         edgeMovable: true,
@@ -667,11 +929,12 @@ onMounted(() => {
     }) as import('@antv/x6').CellViewInteracting,
   })
 
-  // X6 会在容器内创建子元素并绑定 wheel，同步 patch 已存在的子树
+  // Passive patch for X6-created sub-elements
   containerRef.value.querySelectorAll?.('*')?.forEach((el) => {
     if (el instanceof HTMLElement) patchPassiveEventListeners(el)
   })
 
+  // Plugins
   graph.use(new Snapline({ enabled: true }))
   graph.use(
     new Keyboard({
@@ -687,6 +950,7 @@ onMounted(() => {
     }),
   )
 
+  // ---- Keyboard Shortcuts ----
   graph.bindKey(['ctrl+z', 'meta+z'], (e) => {
     e.preventDefault()
     if (props.canUndo) emit('undo')
@@ -695,37 +959,142 @@ onMounted(() => {
     e.preventDefault()
     if (props.canRedo) emit('redo')
   })
+  graph.bindKey(['delete', 'backspace'], (e) => {
+    e.preventDefault()
+    deleteSelected()
+  })
+  graph.bindKey('escape', () => {
+    selectEdge(null)
+    emit('select', null)
+  })
 
+  // ---- Node Events ----
   graph.on('node:click', handleNodeClick)
-  graph.on('node:mouseenter', ({ node }: { node: { id: string; getPorts: () => { id: string }[] } }) => {
-    showNodePorts(node, true)
+  graph.on(
+    'node:mouseenter',
+    ({ node }: { node: { id: string; getPorts: () => { id: string }[] } }) => {
+      showNodePorts(node, true)
+    },
+  )
+  graph.on(
+    'node:mouseleave',
+    ({ node }: { node: { id: string; getPorts: () => { id: string }[] } }) => {
+      showNodePorts(node, false)
+    },
+  )
+  graph.on(
+    'node:moved',
+    ({
+      node,
+    }: {
+      node: {
+        id: string
+        getPosition: () => { x: number; y: number }
+        setPosition: (x: number, y: number) => void
+      }
+    }) => {
+      const dataNode = props.nodes.find((n) => n.id === node.id)
+      const isServerNode =
+        dataNode?.dependencyRole === 'server' && dataNode.dependencyGroupId != null
+      if (isServerNode && dataNode.x != null && dataNode.y != null) {
+        node.setPosition(dataNode.x, dataNode.y)
+        return
+      }
+      const pos = node.getPosition()
+      positionOnlyRef.value = true
+      emit('nodeMoved', { nodeId: node.id, x: pos.x, y: pos.y })
+    },
+  )
+
+  // ---- Context Menu Events ----
+  graph.on(
+    'node:contextmenu',
+    ({ e, node }: { e: MouseEvent; node: { id: string } }) => {
+      e.preventDefault()
+      e.stopPropagation()
+      showNodeContextMenu(e, node.id)
+    },
+  )
+  graph.on(
+    'edge:contextmenu',
+    ({ e, edge }: { e: MouseEvent; edge: { id: string } }) => {
+      e.preventDefault()
+      e.stopPropagation()
+      showEdgeContextMenu(e, edge.id)
+    },
+  )
+  graph.on('blank:contextmenu', ({ e }: { e: MouseEvent }) => {
+    e.preventDefault()
+    showBlankContextMenu(e)
   })
-  graph.on('node:mouseleave', ({ node }: { node: { id: string; getPorts: () => { id: string }[] } }) => {
-    showNodePorts(node, false)
+
+  // ---- Edge Events ----
+  graph.on('edge:click', ({ edge }: { edge: { id: string } }) => {
+    // 选中连线
+    selectEdge(edge.id)
+    // 取消节点选中
+    emit('select', null)
   })
-  graph.on('node:moved', ({ node }: { node: { id: string; getPosition: () => { x: number; y: number }; setPosition: (x: number, y: number) => void } }) => {
-    const dataNode = props.nodes.find((n) => n.id === node.id)
-    const isServerNode =
-      dataNode?.dependencyRole === 'server' && dataNode.dependencyGroupId != null
-    if (isServerNode && dataNode.x != null && dataNode.y != null) {
-      node.setPosition(dataNode.x, dataNode.y)
-      return
+  graph.on('edge:mouseenter', ({ edge }: { edge: { id: string } }) => {
+    if (!graph) return
+    const cell = graph.getCellById(edge.id)
+    if (cell && graph.isEdge(cell) && edge.id !== selectedEdgeId.value) {
+      cell.setAttrByPath('line/strokeWidth', 3)
     }
-    const pos = node.getPosition()
-    positionOnlyRef.value = true
-    emit('nodeMoved', { nodeId: node.id, x: pos.x, y: pos.y })
   })
-  graph.on('edge:change:vertices', ({ edge }: { edge: { id: string; getVertices: () => Array<{ x: number; y: number }> } }) => {
-    const raw = edge.getVertices()
-    const vertices = raw.map((v: { x: number; y: number }) => ({ x: v.x, y: v.y }))
-    emit('edgeVerticesChanged', { edgeId: edge.id, vertices })
+  graph.on('edge:mouseleave', ({ edge }: { edge: { id: string } }) => {
+    if (!graph) return
+    const cell = graph.getCellById(edge.id)
+    if (cell && graph.isEdge(cell) && edge.id !== selectedEdgeId.value) {
+      cell.setAttrByPath('line/strokeWidth', 2)
+    }
   })
-  graph.on('edge:connected', ({ edge, isNew }: { edge: { getSourceCellId: () => string; getTargetCellId: () => string }; isNew: boolean }) => {
-    if (!isNew) return
-    const source = edge.getSourceCellId()
-    const target = edge.getTargetCellId()
-    emit('edgeConnected', { source, target })
-    graph!.removeCell(edge as unknown as import('@antv/x6').Cell)
+
+  graph.on('blank:click', () => {
+    selectEdge(null)
+    emit('select', null)
+  })
+
+  // ---- Edge lifecycle events ----
+  graph.on(
+    'edge:change:vertices',
+    ({
+      edge,
+    }: {
+      edge: { id: string; getVertices: () => Array<{ x: number; y: number }> }
+    }) => {
+      const raw = edge.getVertices()
+      const vertices = raw.map((v: { x: number; y: number }) => ({
+        x: v.x,
+        y: v.y,
+      }))
+      emit('edgeVerticesChanged', { edgeId: edge.id, vertices })
+    },
+  )
+  graph.on(
+    'edge:connected',
+    ({
+      edge,
+      isNew,
+    }: {
+      edge: {
+        getSourceCellId: () => string
+        getTargetCellId: () => string
+      }
+      isNew: boolean
+    }) => {
+      if (!isNew) return
+      const source = edge.getSourceCellId()
+      const target = edge.getTargetCellId()
+      emit('edgeConnected', { source, target })
+      graph!.removeCell(edge as unknown as import('@antv/x6').Cell)
+    },
+  )
+  graph.on('cell:removed', ({ cell }: { cell: import('@antv/x6').Cell }) => {
+    if (graph!.isEdge(cell)) {
+      if (selectedEdgeId.value === cell.id) selectEdge(null)
+      emit('edgeRemoved', cell.id)
+    }
   })
 
   syncGraph()
@@ -738,6 +1107,7 @@ onUnmounted(() => {
   graph = null
 })
 
+// ========== Watchers ==========
 watch(
   () => [props.nodes, props.edges, props.layerDisplayFields, props.nodePortConfig],
   () => syncGraph(),
@@ -753,6 +1123,36 @@ watch(
     }
   },
 )
+
+// 选中节点变化时更新视觉状态
+watch(
+  () => props.selectedNodeId,
+  (newId, oldId) => {
+    if (!graph) return
+    if (oldId) {
+      const old = graph.getCellById(oldId)
+      if (old && graph.isNode(old)) {
+        const data = (old as unknown as { getData: () => Record<string, unknown> }).getData()
+        ;(old as unknown as { setData: (d: Record<string, unknown>) => void }).setData({
+          ...data,
+          selected: false,
+        })
+      }
+    }
+    if (newId) {
+      const node = graph.getCellById(newId)
+      if (node && graph.isNode(node)) {
+        const data = (
+          node as unknown as { getData: () => Record<string, unknown> }
+        ).getData()
+        ;(node as unknown as { setData: (d: Record<string, unknown>) => void }).setData({
+          ...data,
+          selected: true,
+        })
+      }
+    }
+  },
+)
 </script>
 
 <template>
@@ -760,42 +1160,96 @@ watch(
     class="zoom-pan-container"
     @dragover="onDragOver"
     @drop="onDrop"
+    @contextmenu.prevent
   >
     <div ref="containerRef" class="x6-container" />
-    <div class="zoom-controls">
-      <NButtonGroup vertical size="small">
+
+    <!-- Toolbar -->
+    <div class="diagram-toolbar">
+      <!-- Undo / Redo -->
+      <div class="toolbar-group">
         <NTooltip placement="left">
           <template #trigger>
-            <NButton secondary :disabled="!canUndo" @click="onUndo">↶</NButton>
+            <button class="toolbar-btn" :disabled="!canUndo" @click="onUndo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+            </button>
           </template>
           撤销 (Ctrl+Z)
         </NTooltip>
         <NTooltip placement="left">
           <template #trigger>
-            <NButton secondary :disabled="!canRedo" @click="onRedo">↷</NButton>
+            <button class="toolbar-btn" :disabled="!canRedo" @click="onRedo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"></path></svg>
+            </button>
           </template>
           重做 (Ctrl+Shift+Z)
         </NTooltip>
+      </div>
+
+      <div class="toolbar-divider" />
+
+      <!-- Zoom -->
+      <div class="toolbar-group">
         <NTooltip placement="left">
           <template #trigger>
-            <NButton secondary @click="zoomIn">+</NButton>
+            <button class="toolbar-btn" @click="zoomIn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+            </button>
           </template>
           放大
         </NTooltip>
         <NTooltip placement="left">
           <template #trigger>
-            <NButton secondary @click="zoomOut">&minus;</NButton>
+            <button class="toolbar-btn" @click="zoomOut">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+            </button>
           </template>
           缩小
         </NTooltip>
         <NTooltip placement="left">
           <template #trigger>
-            <NButton secondary @click="resetView">&#x27F2;</NButton>
+            <button class="toolbar-btn" @click="fitContent">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+            </button>
+          </template>
+          适应画布
+        </NTooltip>
+        <NTooltip placement="left">
+          <template #trigger>
+            <button class="toolbar-btn" @click="resetView">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+            </button>
           </template>
           重置视图
         </NTooltip>
-      </NButtonGroup>
+      </div>
+
+      <div class="toolbar-divider" />
+
+      <!-- Delete selected -->
+      <div class="toolbar-group">
+        <NTooltip placement="left">
+          <template #trigger>
+            <button class="toolbar-btn toolbar-btn-danger" :disabled="!hasSelection" @click="deleteSelected">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </template>
+          删除选中 (Delete)
+        </NTooltip>
+      </div>
     </div>
+
+    <!-- Context Menu -->
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :options="ctxMenu.options"
+      :show="ctxMenu.show"
+      @select="onCtxMenuSelect"
+      @clickoutside="onCtxMenuClickOutside"
+    />
   </div>
 </template>
 
@@ -814,20 +1268,78 @@ watch(
   height: 100%;
 }
 
-.zoom-controls {
+/* ---- Toolbar ---- */
+.diagram-toolbar {
   position: absolute;
   bottom: 12px;
   right: 12px;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.toolbar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.toolbar-divider {
+  height: 1px;
+  margin: 2px 4px;
+  background: var(--border, #e2e8f0);
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary, #334155);
+  transition: background 0.15s, color 0.15s;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #f1f5f9);
+  color: var(--accent, #4f46e5);
+}
+
+.toolbar-btn:active:not(:disabled) {
+  background: var(--bg-active, #e2e8f0);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.toolbar-btn-danger:hover:not(:disabled) {
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.toolbar-btn svg {
+  flex-shrink: 0;
 }
 </style>
 
 <style>
-/* 拓扑卡片 */
+/* ---- Topology Card ---- */
 .topology-card {
   display: flex;
   flex-direction: column;
-  border: 1px solid #5f95ff;
+  border: 2px solid #e2e8f0;
   border-radius: 8px;
   box-sizing: border-box;
   padding: 12px 12px 14px;
@@ -836,27 +1348,34 @@ watch(
   background: #fff;
   gap: 8px;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.2s, box-shadow 0.2s;
   overflow: hidden;
 }
 
 .topology-card:hover {
-  border-color: var(--accent);
-  box-shadow: var(--shadow-sm);
+  border-color: var(--accent, #4f46e5);
+  box-shadow: 0 2px 12px rgba(79, 70, 229, 0.12);
+}
+
+/* 选中状态 */
+.topology-card-selected {
+  border-color: var(--accent, #4f46e5) !important;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18), 0 2px 12px rgba(79, 70, 229, 0.12) !important;
 }
 
 .topology-card.user {
-  border-color: var(--accent-dim);
+  border-color: var(--accent-dim, #6366f1);
 }
 
 .topology-card-follows-client {
   cursor: default;
 }
 
+/* ---- Card Header ---- */
 .topology-card-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .topology-card-icon {
@@ -896,32 +1415,49 @@ watch(
   min-width: 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-primary, #0f172a);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* ---- Card Actions ---- */
 .topology-card-actions {
   margin-left: auto;
-  color: var(--text-muted);
   display: flex;
-  gap: 8px;
+  gap: 4px;
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.topology-card:hover .topology-card-actions {
+  opacity: 1;
 }
 
 .topology-card-actions .op {
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   cursor: pointer;
-  padding: 2px 4px;
   border-radius: 4px;
+  color: var(--text-muted, #64748b);
+  transition: background 0.15s, color 0.15s;
 }
 
 .topology-card-actions .op:hover {
-  background: var(--bg-hover);
-  color: var(--accent);
+  background: var(--bg-hover, #f1f5f9);
+  color: var(--accent, #4f46e5);
 }
 
+.topology-card-actions .op-danger:hover {
+  background: #fef2f2;
+  color: #ef4444;
+}
+
+/* ---- Card Body ---- */
 .topology-card-body {
   flex: 1;
   min-height: 0;
@@ -936,7 +1472,7 @@ watch(
 .topology-card-field {
   font-size: 11px;
   line-height: 1.35;
-  color: var(--text-muted);
+  color: var(--text-muted, #64748b);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -181,6 +181,17 @@ export const useTopologyStore = defineStore('topology', () => {
     return { ok: true, edge }
   }
 
+  /** 删除指定连线（如通过边上删除按钮） */
+  function removeEdge(edgeId: string): void {
+    const edge = topology.value.edges.find((e) => e.id === edgeId)
+    if (!edge) return
+    pushState()
+    topology.value = {
+      ...topology.value,
+      edges: topology.value.edges.filter((e) => e.id !== edgeId),
+    }
+  }
+
   /** 更新连线顶点（用户拖拽连线路径后持久化） */
   function updateEdgeVertices(edgeId: string, vertices: { x: number; y: number }[]): void {
     pushState()
@@ -407,6 +418,7 @@ export const useTopologyStore = defineStore('topology', () => {
     addNodeAfter,
     addLayerNode,
     addEdge,
+    removeEdge,
     updateNodePosition,
     updateEdgeVertices,
     removeNode,
