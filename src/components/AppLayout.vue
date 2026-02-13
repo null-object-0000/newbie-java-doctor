@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
+import { NLayoutHeader, NLayoutFooter } from 'naive-ui'
 </script>
 
 <template>
   <div class="app-layout">
-    <header class="header">
+    <NLayoutHeader bordered class="header">
       <div class="header-inner">
         <div class="logo">
           <div class="logo-icon">
@@ -21,17 +22,17 @@ import { RouterView } from 'vue-router'
           </div>
         </div>
       </div>
-    </header>
+    </NLayoutHeader>
 
     <main class="main">
       <RouterView />
     </main>
 
-    <footer class="footer">
+    <NLayoutFooter bordered class="footer">
       <div class="footer-inner">
         Java Doctor © 2026 · 全链路容量评估与性能导航
       </div>
-    </footer>
+    </NLayoutFooter>
   </div>
 </template>
 
@@ -46,11 +47,8 @@ import { RouterView } from 'vue-router'
 }
 
 .header {
-  position: sticky;
-  top: 0;
-  z-index: 30;
+  flex-shrink: 0;
   background: var(--bg-header);
-  border-bottom: 1px solid var(--border);
 }
 
 .header-inner {
@@ -98,14 +96,22 @@ import { RouterView } from 'vue-router'
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  width: 100%;
   padding: 0.75rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+/* RouterView 渲染的视图根节点撑满 main */
+.main > * {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .footer {
+  flex-shrink: 0;
   background: var(--bg-footer);
-  border-top: 1px solid var(--border);
-  padding: 1.5rem 1rem;
+  padding: 1rem;
 }
 
 .footer-inner {

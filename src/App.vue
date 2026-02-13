@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { NConfigProvider } from 'naive-ui'
+import { themeOverrides } from '@/theme'
 import AppLayout from '@/components/AppLayout.vue'
 </script>
 
 <template>
-  <AppLayout />
+  <NConfigProvider :theme-overrides="themeOverrides">
+    <AppLayout />
+  </NConfigProvider>
 </template>
 
 <style>
-/* PerfNav 风格：Inter 字体 + Slate/Indigo 配色（浅色） */
+/* Inter 字体 + Slate/Indigo 配色 CSS 变量（供组件级 scoped 样式和 X6 HTML 节点使用） */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
@@ -50,59 +54,18 @@ body {
 
 #app {
   height: 100%;
+  min-height: 100vh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-/* 通用卡片样式（与 PerfNav 一致） */
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 1rem;
-}
-
-@media (min-width: 640px) {
-  .card {
-    padding: 1.25rem;
-  }
-}
-
-.card-title {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 1rem 0;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border);
-}
-
-/* 表单控件统一风格 */
-input[type="text"],
-input[type="number"],
-select {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  color: var(--text-primary);
-  background: var(--bg-page);
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius);
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-input:focus,
-select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
-}
-
-label {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  margin-bottom: 0.25rem;
-  display: block;
+/* NConfigProvider 根节点撑满，否则内部 height: 100% 无效 */
+#app > * {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 </style>

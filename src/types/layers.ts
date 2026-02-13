@@ -97,68 +97,6 @@ export interface RuntimeConfig {
   logbackNeverBlock: boolean
 }
 
-// ========== Application Layer - Dependency 依赖层 ==========
-export type HttpClientType = 'java_http' | 'okhttp' | 'apache'
-
-export interface DependencyHttpClientParams {
-  type: HttpClientType
-  networkEnv: NetworkEnv
-  messageSizeBytes: number
-  targetQps?: number
-  slaRtMs?: number
-}
-
-export interface DependencyRedisParams {
-  memoryGb: number
-  shardCount: number
-}
-
-export interface DependencyDbParams {
-  engine: string
-  cpu: number
-  memoryGb: number
-  maxConnections: number
-  maxIops: number
-  storageGb: number
-}
-
-export interface JavaHttpClientConfig {
-  version: string
-  executor: string
-  timeoutMs: number
-}
-
-export interface OkHttpConfig {
-  maxRequestsPerHost: number
-  maxRequests: number
-  maxIdleConnections: number
-  keepAliveDurationSec: number
-  connectTimeoutMs: number
-  readTimeoutMs: number
-  writeTimeoutMs: number
-}
-
-export interface ApacheHttpClientConfig {
-  maxConnTotal: number
-  maxConnPerRoute: number
-  connectionTimeToLiveSec: number
-  connectionRequestTimeoutMs: number
-  responseTimeoutMs: number
-}
-
-export interface DependencyLayerParams {
-  httpClients: DependencyHttpClientParams[]
-  redis?: DependencyRedisParams
-  database?: DependencyDbParams
-}
-
-export interface DependencyLayerConfig {
-  javaHttp?: JavaHttpClientConfig
-  okhttp?: OkHttpConfig
-  apacheHttp?: ApacheHttpClientConfig
-  redisClient: 'jedis' | 'lettuce' | 'redisson'
-}
-
 // ========== 拓扑节点 ==========
 export type LayerId = 'client' | 'access' | 'host' | 'runtime' | 'dependency'
 
@@ -174,8 +112,6 @@ export interface TopologyNode {
   nodeSource?: 'default' | 'user'
   /** 仅当 layerId === 'dependency' 时有效 */
   dependencyKind?: DependencyKind
-  /** 三方接口/自定义依赖时的名称 */
-  customLabel?: string
   x?: number
   y?: number
 }
@@ -198,5 +134,4 @@ export interface AddNodeOptions {
   layerId: LayerId
   label?: string
   dependencyKind?: DependencyKind
-  customLabel?: string
 }

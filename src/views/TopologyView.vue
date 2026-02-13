@@ -4,15 +4,14 @@ import type { LayerId } from '@/types/layers'
 import { useTopologyStore } from '@/stores/topology'
 import { storeToRefs } from 'pinia'
 import {
-  getLayers,
   getTopologyDisplayConfig,
   getTopologyDisplayFieldLabel,
   getTopologyDisplayValueLabel,
 } from '@/registry/layers'
 import { getByPath } from '@/registry/schemaBuild'
+import { NButton, NButtonGroup, NCard, NCode, NEmpty, NText } from 'naive-ui'
 import TopologyDiagram from '@/components/TopologyDiagram.vue'
 import NodeListPanel from '@/components/NodeListPanel.vue'
-import AddNodeModal from '@/components/AddNodeModal.vue'
 import LayerEditorPanel from '@/components/LayerEditorPanel.vue'
 import type { TopologyNode } from '@/types/layers'
 
@@ -52,7 +51,6 @@ function getLayerConfig(layerId: LayerId): object {
 /** 按节点生成拓扑图卡片展示字段（key 为 nodeId，依赖层按节点 kind 用各自 schema） */
 const layerDisplayFields = computed(() => {
   const out: Record<string, { label: string; displayText: string }[]> = {}
-  const layerIds = getLayers().map((l) => l.id)
   for (const node of topology.value.nodes) {
     const layerId = node.layerId
     const kind = node.layerId === 'dependency' ? node.dependencyKind : undefined
@@ -96,7 +94,6 @@ function copyJson() {
   navigator.clipboard.writeText(topologyJson.value)
 }
 
-const addModalVisible = ref(false)
 /** 当前编辑的节点（点击拓扑图节点时设置；依赖层需据此取 kind 与节点 params/config） */
 const editingNode = ref<TopologyNode | null>(null)
 
@@ -108,20 +105,8 @@ function canAddLayer(layerId: 'client' | 'access' | 'host' | 'runtime') {
   return !topology.value.nodes.some((n) => n.layerId === layerId)
 }
 
-function closeAddModal() {
-  addModalVisible.value = false
-}
-
 function onEdit(node: TopologyNode) {
   editingNode.value = node
-}
-
-function onAddSubmit(opts: { layerId: 'dependency'; dependencyKind?: import('@/types/layers').DependencyKind }): void {
-  store.addNodeAfter(null, {
-    layerId: 'dependency',
-    dependencyKind: opts.dependencyKind,
-  })
-  closeAddModal()
 }
 
 function onRemove(nodeId: string) {
@@ -163,32 +148,45 @@ function onDropFromPalette(payload: DropPayload) {
       <aside class="panel-left">
         <NodeListPanel :can-add-layer="canAddLayer" />
       </aside>
-      <div class="topology-main">
-        <div class="middle-toolbar">
-          <div class="mode-tabs">
-            <button type="button" class="mode-tab" :class="{ active: middleViewMode === 'graph' }"
-              @click="middleViewMode = 'graph'">
+      <NCard class="topology-main" :segmented="{ content: true }" size="small">
+        <template #header>
+          <NButtonGroup size="small">
+            <NButton
+              :type="middleViewMode === 'graph' ? 'primary' : 'default'"
+              :secondary="middleViewMode === 'graph'"
+              @click="middleViewMode = 'graph'"
+            >
               拓扑图
-            </button>
-            <button type="button" class="mode-tab" :class="{ active: middleViewMode === 'json' }"
-              @click="middleViewMode = 'json'">
+            </NButton>
+            <NButton
+              :type="middleViewMode === 'json' ? 'primary' : 'default'"
+              :secondary="middleViewMode === 'json'"
+              @click="middleViewMode = 'json'"
+            >
               JSON
-            </button>
-          </div>
-          <button v-if="middleViewMode === 'json'" type="button" class="copy-btn" @click="copyJson">
+            </NButton>
+          </NButtonGroup>
+        </template>
+        <template #header-extra>
+          <NButton
+            v-if="middleViewMode === 'json'"
+            size="tiny"
+            secondary
+            @click="copyJson"
+          >
             复制
-          </button>
-        </div>
+          </NButton>
+        </template>
         <div class="middle-content">
           <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
             :layer-display-fields="layerDisplayFields" :visible="middleViewMode === 'graph'"
             @remove="onRemove" @edit="onEdit" @drop="onDropFromPalette" @node-moved="onNodeMoved"
             @edge-vertices-changed="onEdgeVerticesChanged" @edge-connected="onEdgeConnected" />
           <div v-show="middleViewMode === 'json'" class="json-view">
-            <pre class="json-pre"><code>{{ topologyJson }}</code></pre>
+            <NCode :code="topologyJson" language="json" word-wrap />
           </div>
         </div>
-      </div>
+      </NCard>
       <aside class="panel-right">
         <div v-if="editingNode" class="panel-right-inner">
           <LayerEditorPanel
@@ -197,13 +195,9 @@ function onDropFromPalette(payload: DropPayload) {
             @close="editingNode = null"
           />
         </div>
-        <div v-else class="panel-placeholder">
-          <p>点击拓扑图中的节点可在此编辑该层属性</p>
-        </div>
+        <NEmpty v-else description="点击拓扑图中的节点可在此编辑该层属性" class="panel-placeholder" />
       </aside>
     </div>
-
-    <AddNodeModal :visible="addModalVisible" @close="closeAddModal" @submit="onAddSubmit" />
   </div>
 </template>
 
@@ -237,72 +231,17 @@ function onDropFromPalette(payload: DropPayload) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
 }
 
-.middle-toolbar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-page);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-}
-
-.mode-tabs {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.mode-tab {
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
-}
-
-.mode-tab:hover {
-  color: var(--text-secondary);
-  background: var(--bg-hover);
-}
-
-.mode-tab.active {
-  color: var(--accent);
-  background: var(--bg-card);
-  border-color: var(--border);
-}
-
-.copy-btn {
-  padding: 0.35rem 0.6rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.copy-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent);
-  color: var(--accent);
+.topology-main :deep(.n-card__content) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 !important;
 }
 
 .middle-content {
-  flex: 1;
-  min-height: 0;
+  height: 100%;
   overflow: hidden;
   position: relative;
 }
@@ -313,20 +252,6 @@ function onDropFromPalette(payload: DropPayload) {
   overflow: auto;
   padding: 1rem;
   background: var(--bg-page);
-}
-
-.json-pre {
-  margin: 0;
-  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
-  font-size: 0.8125rem;
-  line-height: 1.5;
-  color: var(--text-primary);
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.json-pre code {
-  font-family: inherit;
 }
 
 .panel-right {
@@ -352,12 +277,5 @@ function onDropFromPalette(payload: DropPayload) {
 
 .panel-placeholder {
   padding: 1.5rem 1.25rem;
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-
-.panel-placeholder p {
-  margin: 0;
 }
 </style>

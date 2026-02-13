@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import type { LayerId } from '@/types/layers'
 import { getLayerLabel, getDependencyNodeTypeLabel } from '@/registry/layers'
+import { NTabs, NTabPane, NButton, NText } from 'naive-ui'
 import LayerEditorContent from '@/components/LayerEditorContent.vue'
 import type { TopologyNode } from '@/types/layers'
 
@@ -15,8 +16,7 @@ defineEmits<{
   close: []
 }>()
 
-type Section = 'params' | 'config'
-const activeSection = ref<Section>('params')
+const activeTab = ref<string>('params')
 
 const layerTitle = computed(() => {
   if (props.layerId === 'dependency' && props.editingNode?.dependencyKind) {
@@ -29,34 +29,31 @@ const layerTitle = computed(() => {
 <template>
   <div class="layer-editor-panel">
     <header class="panel-header">
-      <h2 class="panel-title">编辑：{{ layerTitle }}</h2>
-      <button type="button" class="panel-close" title="关闭" @click="$emit('close')">×</button>
+      <NText strong class="panel-title">编辑：{{ layerTitle }}</NText>
+      <NButton quaternary circle size="small" @click="$emit('close')">
+        <template #icon>×</template>
+      </NButton>
     </header>
-    <div class="panel-tabs">
-      <button
-        type="button"
-        class="panel-tab"
-        :class="{ active: activeSection === 'params' }"
-        @click="activeSection = 'params'"
-      >
-        核心参数
-      </button>
-      <button
-        type="button"
-        class="panel-tab"
-        :class="{ active: activeSection === 'config' }"
-        @click="activeSection = 'config'"
-      >
-        核心配置
-      </button>
-    </div>
-    <div class="panel-body">
-      <LayerEditorContent
-        :layer-id="layerId"
-        :section="activeSection"
-        :editing-node="editingNode"
-      />
-    </div>
+    <NTabs v-model:value="activeTab" type="line" size="small" class="panel-tabs">
+      <NTabPane name="params" tab="核心参数">
+        <div class="panel-body">
+          <LayerEditorContent
+            :layer-id="layerId"
+            section="params"
+            :editing-node="editingNode"
+          />
+        </div>
+      </NTabPane>
+      <NTabPane name="config" tab="核心配置">
+        <div class="panel-body">
+          <LayerEditorContent
+            :layer-id="layerId"
+            section="config"
+            :editing-node="editingNode"
+          />
+        </div>
+      </NTabPane>
+    </NTabs>
   </div>
 </template>
 
@@ -80,64 +77,26 @@ const layerTitle = computed(() => {
 
 .panel-title {
   font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.panel-close {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 1.25rem;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.panel-close:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
 }
 
 .panel-tabs {
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+}
+
+.panel-tabs :deep(.n-tabs-nav) {
   padding: 0 1.25rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-page);
 }
 
-.panel-tab {
-  padding: 0.5rem 1rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  cursor: pointer;
-  transition: color 0.15s;
-}
-
-.panel-tab:hover {
-  color: var(--text-secondary);
-}
-
-.panel-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+.panel-tabs :deep(.n-tab-pane) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .panel-body {
-  flex: 1;
-  overflow: auto;
   padding: 1rem 1.25rem;
 }
 </style>

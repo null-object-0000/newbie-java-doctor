@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useTopologyStore } from '@/stores/topology'
 import { storeToRefs } from 'pinia'
 import { getParamsSchema, getConfigSchema } from '@/registry/layers'
+import { NEmpty } from 'naive-ui'
 import DynamicForm from '@/components/DynamicForm.vue'
 import type { LayerId } from '@/types/layers'
 import type { TopologyNode } from '@/types/layers'
@@ -82,9 +83,11 @@ const showReset = computed(() => !!resetHandler.value)
         @reset="resetHandler?.()"
       />
     </template>
-    <div v-else class="section-empty">
-      <p>{{ section === 'params' ? '本层无核心参数' : '本层无核心配置' }}</p>
-    </div>
+    <NEmpty
+      v-else
+      :description="section === 'params' ? '本层无核心参数' : '本层无核心配置'"
+      class="section-empty"
+    />
   </div>
 </template>
 
@@ -95,12 +98,5 @@ const showReset = computed(() => !!resetHandler.value)
 
 .section-empty {
   padding: 1.5rem;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-}
-
-.section-empty p {
-  margin: 0;
 }
 </style>

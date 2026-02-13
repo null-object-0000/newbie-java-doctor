@@ -1,30 +1,33 @@
 <script setup lang="ts">
-import type { DependencyKind } from '@/types/layers'
+import type { DependencyKind, LayerId } from '@/types/layers'
 import { getLayers } from '@/registry/layers'
+import { NCard, NTag, NText } from 'naive-ui'
+
+type NonDepLayerId = 'client' | 'access' | 'host' | 'runtime'
 
 /** 是否允许再拖入该层（客户端/接入/宿主/运行时各最多 1 个） */
 defineProps<{
-  canAddLayer: (layerId: 'client' | 'access' | 'host' | 'runtime') => boolean
+  canAddLayer: (layerId: NonDepLayerId) => boolean
 }>()
 
 /** 拖拽数据类型：整层（层下无节点时）或依赖层子节点 */
 type DragPayload =
-  | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime'; label: string }
+  | { type: 'layer'; layerId: NonDepLayerId; label: string }
   | { type: 'dependency'; kind: DependencyKind; label: string }
 
 /** 层列表来自 registry，支持扩展 */
 const layers = getLayers().map((l) => ({
-  layerId: l.id,
+  layerId: l.id as LayerId,
   label: l.label,
   icon: l.icon,
-  children: (l.children ?? []).map((c) => ({ kind: c.kind, label: c.label })),
+  children: (l.children ?? []).map((c) => ({ kind: c.kind as DependencyKind, label: c.label })),
 }))
 
 /** 层下无节点：层本身可拖；有节点：仅子节点可拖。且需满足 canAddLayer 才能拖入该层。 */
-function isLayerDraggable(layer: (typeof layers)[number], canAddLayer: (id: 'client' | 'access' | 'host' | 'runtime') => boolean) {
+function isLayerDraggable(layer: (typeof layers)[number], canAddLayer: (id: NonDepLayerId) => boolean) {
   if (layer.children.length > 0) return false
   if (layer.layerId === 'dependency') return false
-  return canAddLayer(layer.layerId as 'client' | 'access' | 'host' | 'runtime')
+  return canAddLayer(layer.layerId as NonDepLayerId)
 }
 
 /** 仅从节点列表拖出时设置，拓扑图只认此标记的 drop，避免图上拖节点等误触导致重复添加 */
@@ -39,22 +42,28 @@ function onDragStart(e: DragEvent, payload: DragPayload) {
 }
 
 function onLayerDragStart(e: DragEvent, layer: (typeof layers)[number]) {
-  onDragStart(e, { type: 'layer', layerId: layer.layerId as 'client' | 'access' | 'host' | 'runtime', label: layer.label })
+  onDragStart(e, { type: 'layer', layerId: layer.layerId as NonDepLayerId, label: layer.label })
 }
 
 function onChildDragStart(e: DragEvent, kind: DependencyKind, label: string) {
   onDragStart(e, { type: 'dependency', kind, label })
 }
+
+/** 模板中安全地调用 canAddLayer（跳过 dependency 层类型） */
+function checkCanAdd(layerId: LayerId, canAddLayer: (id: NonDepLayerId) => boolean): boolean {
+  if (layerId === 'dependency') return false
+  return canAddLayer(layerId)
+}
 </script>
 
 <template>
-  <div class="node-list-panel">
-    <header class="panel-header">
-      <h2 class="panel-title">节点列表</h2>
-      <p class="panel-desc">
-        拖拽层名或子节点到拓扑图中添加；连线由用户在图中自行连接。
-      </p>
-    </header>
+  <NCard class="node-list-panel" size="small" :segmented="{ content: true }">
+    <template #header>
+      <NText strong>节点列表</NText>
+    </template>
+    <template #header-extra>
+      <NText depth="3" style="font-size: 0.7rem">拖拽添加</NText>
+    </template>
     <div class="panel-body">
       <ul class="layer-list">
         <li v-for="layer in layers" :key="layer.layerId" class="layer-block">
@@ -62,7 +71,7 @@ function onChildDragStart(e: DragEvent, kind: DependencyKind, label: string) {
             class="layer-header"
             :class="{
               'layer-header-draggable': isLayerDraggable(layer, canAddLayer),
-              'layer-header-disabled': layer.children.length === 0 && layer.layerId !== 'dependency' && !canAddLayer(layer.layerId),
+              'layer-header-disabled': layer.children.length === 0 && layer.layerId !== 'dependency' && !checkCanAdd(layer.layerId, canAddLayer),
             }"
             :draggable="isLayerDraggable(layer, canAddLayer)"
             @dragstart="
@@ -71,10 +80,13 @@ function onChildDragStart(e: DragEvent, kind: DependencyKind, label: string) {
           >
             <span class="layer-icon">{{ layer.icon }}</span>
             <span class="layer-label">{{ layer.label }}</span>
-            <span
-              v-if="layer.children.length === 0 && layer.layerId !== 'dependency' && !canAddLayer(layer.layerId)"
-              class="layer-badge"
-            >已添加</span>
+            <NTag
+              v-if="layer.children.length === 0 && layer.layerId !== 'dependency' && !checkCanAdd(layer.layerId, canAddLayer)"
+              size="tiny"
+              :bordered="false"
+            >
+              已添加
+            </NTag>
           </div>
           <ul v-if="layer.children.length" class="node-list">
             <li
@@ -91,46 +103,27 @@ function onChildDragStart(e: DragEvent, kind: DependencyKind, label: string) {
         </li>
       </ul>
     </div>
-  </div>
+  </NCard>
 </template>
 
 <style scoped>
 .node-list-panel {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   min-width: 0;
 }
 
-.panel-header {
-  flex-shrink: 0;
-  padding: 1rem 1rem 0.75rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.panel-title {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 0.25rem 0;
-}
-
-.panel-desc {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin: 0;
-  line-height: 1.4;
-}
-
-.panel-body {
+.node-list-panel :deep(.n-card__content) {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0.5rem;
+  padding: 0.5rem !important;
+}
+
+.panel-body {
+  display: flex;
+  flex-direction: column;
 }
 
 .layer-list {
@@ -183,16 +176,6 @@ function onChildDragStart(e: DragEvent, kind: DependencyKind, label: string) {
 
 .layer-header-disabled .layer-label {
   color: var(--text-muted);
-}
-
-.layer-badge {
-  font-size: 0.6875rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: var(--bg-hover);
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  flex-shrink: 0;
 }
 
 .layer-icon {

@@ -1,12 +1,10 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import {
-  getLayerLabels,
   getLayerLabel,
   getLayerOrder,
   getLayerMaxCount,
   getDependencyNodeTypeLabel,
-  getDependencyKindLabels,
   getDefaultParams,
   getDefaultConfig,
 } from '@/registry/layers'
@@ -61,30 +59,6 @@ export const useTopologyStore = defineStore('topology', () => {
   /** 依赖层按节点 id 存储核心参数/配置，每种子类型用各自 schema 的默认值 */
   const dependencyNodeParams = ref<Record<string, Record<string, unknown>>>({})
   const dependencyNodeConfig = ref<Record<string, Record<string, unknown>>>({})
-
-  const layerLabels = computed(() => getLayerLabels())
-
-  /** 按 nodes 顺序重建线性边（保留已有边的 vertices） */
-  function syncEdgesFromOrder(): void {
-    const list = topology.value.nodes
-    const oldEdges = topology.value.edges
-    const edges: TopologyEdge[] = []
-    for (let i = 0; i < list.length - 1; i++) {
-      const a = list[i]
-      const b = list[i + 1]
-      if (a && b) {
-        const id = nextEdgeId(a.id, b.id)
-        const prev = oldEdges.find((e) => e.source === a.id && e.target === b.id)
-        edges.push({
-          id,
-          source: a.id,
-          target: b.id,
-          ...(prev?.vertices && prev.vertices.length > 0 ? { vertices: prev.vertices } : {}),
-        })
-      }
-    }
-    topology.value = { ...topology.value, edges }
-  }
 
   /** 用户从端口拖拽创建的新连线（由用户自行操作） */
   function addEdge(sourceId: string, targetId: string): TopologyEdge | null {
@@ -234,11 +208,9 @@ export const useTopologyStore = defineStore('topology', () => {
     runtimeConfig,
     dependencyNodeParams,
     dependencyNodeConfig,
-    layerLabels,
     addNodeAfter,
     addLayerNode,
     addEdge,
-    syncEdgesFromOrder,
     updateNodePosition,
     updateEdgeVertices,
     removeNode,
@@ -248,7 +220,3 @@ export const useTopologyStore = defineStore('topology', () => {
     resetDependencyNode,
   }
 })
-
-/** 兼容：层/依赖类型展示名（只读快照，扩展请用 registry） */
-export const LAYER_LABELS = getLayerLabels()
-export const DEPENDENCY_KIND_LABELS = getDependencyKindLabels()

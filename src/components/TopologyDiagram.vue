@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Graph, Shape, Snapline } from '@antv/x6'
+import { NButton, NButtonGroup, NTooltip } from 'naive-ui'
 import { getLayerIcon, getLayerTheme } from '@/registry/layers'
 import type { TopologyNode, TopologyEdge, DependencyKind } from '@/types/layers'
 
@@ -457,9 +458,26 @@ watch(
   >
     <div ref="containerRef" class="x6-container" />
     <div class="zoom-controls">
-      <button type="button" title="放大" @click="zoomIn">+</button>
-      <button type="button" title="缩小" @click="zoomOut">&minus;</button>
-      <button type="button" title="重置视图" @click="resetView">&#x27F2;</button>
+      <NButtonGroup vertical size="small">
+        <NTooltip placement="left">
+          <template #trigger>
+            <NButton secondary @click="zoomIn">+</NButton>
+          </template>
+          放大
+        </NTooltip>
+        <NTooltip placement="left">
+          <template #trigger>
+            <NButton secondary @click="zoomOut">&minus;</NButton>
+          </template>
+          缩小
+        </NTooltip>
+        <NTooltip placement="left">
+          <template #trigger>
+            <NButton secondary @click="resetView">&#x27F2;</NButton>
+          </template>
+          重置视图
+        </NTooltip>
+      </NButtonGroup>
     </div>
   </div>
 </template>
@@ -472,9 +490,6 @@ watch(
   min-height: 0;
   overflow: hidden;
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
 }
 
 .x6-container {
@@ -486,31 +501,7 @@ watch(
   position: absolute;
   bottom: 12px;
   right: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
   z-index: 10;
-}
-
-.zoom-controls button {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: 1.1rem;
-  cursor: pointer;
-  line-height: 1;
-  box-shadow: var(--shadow-sm);
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.zoom-controls button:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent);
-  color: var(--accent);
 }
 </style>
 
