@@ -1181,11 +1181,21 @@ onMounted(() => {
   syncGraph()
   deferEdgeSync = false
 
-  // Phase 2：等浏览器完成 HTML 节点绘制（port 已在 DOM），再同步边。
-  setTimeout(() => {
-    if (!graph) return
-    doSyncGraph()
-  }, 200)
+  // Phase 2：轮询检测 port 元素是否已挂载到 DOM（circle[magnet="true"]），
+  // 一旦检测到即同步边；附带上限防止无限轮询。
+  let portPollCount = 0
+  const MAX_PORT_POLLS = 60 // ≈ 60 帧 ≈ 1s@60fps
+  const pollPortsAndSyncEdges = () => {
+    if (!graph || !containerRef.value) return
+    portPollCount++
+    const hasPorts = containerRef.value.querySelector('circle[magnet="true"]') !== null
+    if (hasPorts || portPollCount >= MAX_PORT_POLLS) {
+      doSyncGraph()
+      return
+    }
+    requestAnimationFrame(pollPortsAndSyncEdges)
+  }
+  requestAnimationFrame(pollPortsAndSyncEdges)
 })
 
 onUnmounted(() => {
