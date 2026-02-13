@@ -9,9 +9,11 @@
 import type {
   LayerDefinition,
   DependencyNodeTypeDefinition,
+  EdgeTypeDefinition,
   LayerOrder,
   RegisterLayer,
   RegisterDependencyNodeType,
+  RegisterEdgeType,
   FormSchema,
   FieldDefinition,
   NodeIoRules,
@@ -29,6 +31,7 @@ import { accessLayer } from './access'
 import { hostLayer } from './host'
 import { runtimeLayer } from './runtime'
 import { dependencyLayer } from './dependency'
+import { defaultEdgeTypes } from '../edges/index'
 
 // ---------- 默认层列表（一层一文件，此处仅组装顺序） ----------
 
@@ -85,6 +88,69 @@ export const registerDependencyNodeType: RegisterDependencyNodeType = (def) => {
   if (i >= 0) children[i] = { ...def }
   else children.push({ ...def })
   dep.children = children
+}
+
+// ---------- 连线类型注册表 ----------
+
+function edgeTypeKey(sourceLayerId: string, targetLayerId: string): string {
+  return `${sourceLayerId}->${targetLayerId}`
+}
+
+const edgeTypes = new Map<string, EdgeTypeDefinition>()
+for (const def of defaultEdgeTypes) {
+  edgeTypes.set(edgeTypeKey(def.sourceLayerId, def.targetLayerId), deepClone(def))
+}
+
+/** 注册或覆盖一种连线类型（同 sourceLayerId+targetLayerId 覆盖） */
+export const registerEdgeType: RegisterEdgeType = (def) => {
+  edgeTypes.set(edgeTypeKey(def.sourceLayerId, def.targetLayerId), deepClone(def))
+}
+
+/** 根据源/目标层 ID 获取连线类型定义 */
+export function getEdgeType(sourceLayerId: string, targetLayerId: string): EdgeTypeDefinition | undefined {
+  return edgeTypes.get(edgeTypeKey(sourceLayerId, targetLayerId))
+}
+
+/** 获取连线参数表单 Schema（只读深拷贝） */
+export function getEdgeParamsSchema(sourceLayerId: string, targetLayerId: string): FormSchema | undefined {
+  const def = getEdgeType(sourceLayerId, targetLayerId)
+  return def?.paramsSchema ? deepClone(def.paramsSchema) : undefined
+}
+
+/** 获取连线参数默认值 */
+export function getEdgeDefaultParams(sourceLayerId: string, targetLayerId: string): Record<string, unknown> {
+  const def = getEdgeType(sourceLayerId, targetLayerId)
+  if (def?.paramsSchema) return buildFromSchema(def.paramsSchema)
+  return {}
+}
+
+/** 获取连线上需要展示的参数字段 key 列表 */
+export function getEdgeDisplayConfig(sourceLayerId: string, targetLayerId: string): { params: string[] } | undefined {
+  const def = getEdgeType(sourceLayerId, targetLayerId)
+  if (!def?.edgeDisplay?.params?.length) return undefined
+  return { params: [...def.edgeDisplay.params] }
+}
+
+/** 获取连线参数 Schema 中指定字段的 label */
+export function getEdgeFieldLabel(sourceLayerId: string, targetLayerId: string, key: string): string {
+  const schema = getEdgeType(sourceLayerId, targetLayerId)?.paramsSchema
+  return findFieldLabelInSchema(schema, key)
+}
+
+/** 将连线参数字段值格式化为展示文案 */
+export function getEdgeValueLabel(sourceLayerId: string, targetLayerId: string, key: string, value: unknown): string {
+  const schema = getEdgeType(sourceLayerId, targetLayerId)?.paramsSchema
+  const field = findFieldInSchema(schema, key)
+  if (field?.type === 'select' && field.options?.length) {
+    const opt = field.options.find((o) => o.value === value || String(o.value) === String(value))
+    if (opt) return opt.label
+  }
+  if (value == null) return '—'
+  if (Array.isArray(value)) {
+    if (value.length > 2) return `${value.length} 项`
+    return value.map((v) => (v != null ? String(v) : '')).join(', ')
+  }
+  return String(value)
 }
 
 // ---------- 只读 API ----------

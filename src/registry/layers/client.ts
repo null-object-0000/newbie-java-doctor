@@ -11,18 +11,6 @@ const paramsSchema: FormSchema = {
       label: '核心参数',
       description: '需使用者提供（业务场景为全局核心参数，在未选节点时于右侧编辑）',
       fields: [
-        {
-          key: 'networkEnv',
-          label: '网络环境',
-          type: 'select',
-          default: 'intra_dc',
-          options: [
-            { value: 'public', label: '公网' },
-            { value: 'intra_dc', label: '内网（同中心）' },
-            { value: 'cross_dc', label: '内网（跨中心）' },
-          ],
-        },
-        { key: 'messageSizeBytes', label: '报文大小 (bytes)', type: 'number', default: 1024, min: 1 },
         { key: 'concurrentUsers', label: '并发用户数', type: 'number', default: 100, min: 1 },
         { key: 'targetThroughputRps', label: '目标吞吐量 (RPS)', type: 'number', default: 500, min: 1 },
         {
@@ -48,7 +36,7 @@ export const clientLayer: LayerDefinition = {
   ioRules: {
     hasInput: false,
     hasOutput: true,
-    allowedOutputLayers: ['access'],
+    allowedOutputLayers: ['access', 'host'],
   },
   paramsSchema,
   topologyDisplay: {

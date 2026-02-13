@@ -11,13 +11,17 @@ import {
   getGlobalCoreParamsValueLabel,
   isGlobalCoreParamKey,
   getNodeIoRules,
+  getEdgeDisplayConfig,
+  getEdgeFieldLabel,
+  getEdgeValueLabel,
 } from '@/registry/layers'
 import { getByPath } from '@/registry/schemaBuild'
 import { NButton, NButtonGroup, NCard, NCode, NEmpty, NSelect, NText, useMessage } from 'naive-ui'
 import TopologyDiagram from '@/components/TopologyDiagram.vue'
 import NodeListPanel from '@/components/NodeListPanel.vue'
 import LayerEditorPanel from '@/components/LayerEditorPanel.vue'
-import type { TopologyNode, BusinessScenario } from '@/types/layers'
+import EdgeEditorPanel from '@/components/EdgeEditorPanel.vue'
+import type { TopologyNode, TopologyEdge, BusinessScenario } from '@/types/layers'
 
 const GLOBAL_BUSINESS_SCENARIO_OPTIONS = [
   { value: 'io', label: 'IO 密集型' },
@@ -37,6 +41,7 @@ const {
   runtimeConfig,
   dependencyNodeParams,
   dependencyNodeConfig,
+  edgeParams,
   canUndo,
   canRedo,
 } = storeToRefs(store)
@@ -108,6 +113,29 @@ const layerDisplayFields = computed(() => {
   return out
 })
 
+/** 按连线生成拓扑图连线上展示的字段（key 为 edgeId） */
+const edgeDisplayFields = computed(() => {
+  const out: Record<string, { label: string; displayText: string }[]> = {}
+  for (const edge of topology.value.edges) {
+    const srcNode = topology.value.nodes.find((n) => n.id === edge.source)
+    const tgtNode = topology.value.nodes.find((n) => n.id === edge.target)
+    if (!srcNode || !tgtNode) continue
+    const cfg = getEdgeDisplayConfig(srcNode.layerId, tgtNode.layerId)
+    if (!cfg?.params?.length) continue
+    const params = edgeParams.value[edge.id] ?? {}
+    const rows: { label: string; displayText: string }[] = []
+    for (const key of cfg.params) {
+      const value = getByPath(params, key)
+      rows.push({
+        label: getEdgeFieldLabel(srcNode.layerId, tgtNode.layerId, key),
+        displayText: getEdgeValueLabel(srcNode.layerId, tgtNode.layerId, key, value),
+      })
+    }
+    if (rows.length) out[edge.id] = rows
+  }
+  return out
+})
+
 type MiddleViewMode = 'graph' | 'json'
 const middleViewMode = ref<MiddleViewMode>('graph')
 
@@ -140,7 +168,7 @@ function getNodeParamsConfig(node: TopologyNode): { params: Record<string, unkno
   }
 }
 
-/** 当前拓扑的 JSON 展示（含全局参数与每个节点上的 params/config） */
+/** 当前拓扑的 JSON 展示（含全局参数、每个节点的 params/config、每条连线的 params） */
 const topologyJson = computed(() => {
   const payload = {
     globalCoreParams: { ...globalCoreParams.value } as Record<string, unknown>,
@@ -148,7 +176,10 @@ const topologyJson = computed(() => {
       const { params, config } = getNodeParamsConfig(node)
       return { ...node, params, config }
     }),
-    edges: topology.value.edges,
+    edges: topology.value.edges.map((edge) => {
+      const params = edgeParams.value[edge.id]
+      return params ? { ...edge, params } : edge
+    }),
   }
   return JSON.stringify(payload, null, 2)
 })
@@ -164,6 +195,8 @@ async function copyJson() {
 
 /** 当前编辑的节点（点击拓扑图节点时设置；依赖层需据此取 kind 与节点 params/config） */
 const editingNode = ref<TopologyNode | null>(null)
+/** 当前编辑的连线（点击拓扑图连线时设置） */
+const editingEdge = ref<TopologyEdge | null>(null)
 
 const nodes = computed(() => topology.value.nodes)
 const edges = computed(() => topology.value.edges)
@@ -188,10 +221,17 @@ const selectedNodeId = computed(() => editingNode.value?.id ?? null)
 
 function onSelect(node: TopologyNode | null) {
   editingNode.value = node
+  if (node) editingEdge.value = null
 }
 
 function onEdit(node: TopologyNode) {
   editingNode.value = node
+  editingEdge.value = null
+}
+
+function onEdgeSelect(edge: TopologyEdge | null) {
+  editingEdge.value = edge
+  if (edge) editingNode.value = null
 }
 
 function onRemove(nodeId: string) {
@@ -218,6 +258,9 @@ function onEdgeConnected(payload: { source: string; target: string }) {
 }
 
 function onEdgeRemoved(edgeId: string) {
+  if (editingEdge.value?.id === edgeId) {
+    editingEdge.value = null
+  }
   store.removeEdge(edgeId)
 }
 
@@ -272,10 +315,12 @@ function onDropFromPalette(payload: DropPayload) {
         </template>
         <div class="middle-content">
           <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
-            :layer-display-fields="layerDisplayFields" :node-port-config="nodePortConfig"
+            :layer-display-fields="layerDisplayFields" :edge-display-fields="edgeDisplayFields"
+            :node-port-config="nodePortConfig"
             :visible="middleViewMode === 'graph'" :can-undo="canUndo" :can-redo="canRedo"
             :selected-node-id="selectedNodeId"
-            @remove="onRemove" @edit="onEdit" @select="onSelect" @drop="onDropFromPalette"
+            @remove="onRemove" @edit="onEdit" @select="onSelect" @edge-select="onEdgeSelect"
+            @drop="onDropFromPalette"
             @node-moved="onNodeMoved" @edge-vertices-changed="onEdgeVerticesChanged"
             @edge-connected="onEdgeConnected" @edge-removed="onEdgeRemoved" @undo="store.undo" @redo="store.redo" />
           <div v-show="middleViewMode === 'json'" class="json-view">
@@ -287,7 +332,10 @@ function onDropFromPalette(payload: DropPayload) {
         <div v-if="editingNode" class="panel-right-inner">
           <LayerEditorPanel :layer-id="editingNode.layerId" :editing-node="editingNode" @close="editingNode = null" />
         </div>
-        <NEmpty v-else description="点击拓扑图中的节点可在此编辑该层属性" class="panel-placeholder" />
+        <div v-else-if="editingEdge" class="panel-right-inner">
+          <EdgeEditorPanel :edge="editingEdge" @close="editingEdge = null" />
+        </div>
+        <NEmpty v-else description="点击拓扑图中的节点或连线可在此编辑属性" class="panel-placeholder" />
       </aside>
     </div>
   </div>

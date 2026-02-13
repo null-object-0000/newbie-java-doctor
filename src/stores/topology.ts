@@ -10,6 +10,8 @@ import {
   getDefaultConfig,
   getDefaultGlobalCoreParams,
   validateEdge,
+  getEdgeDefaultParams,
+  getEdgeParamsSchema,
 } from '@/registry/layers'
 import type {
   GlobalCoreParams,
@@ -40,6 +42,8 @@ export interface TopologyFullState {
   runtimeConfig: RuntimeConfig
   dependencyNodeParams: Record<string, Record<string, unknown>>
   dependencyNodeConfig: Record<string, Record<string, unknown>>
+  /** 连线参数：按 edgeId 存储（如网络环境等链路属性） */
+  edgeParams: Record<string, Record<string, unknown>>
 }
 
 function deepClone<T>(x: T): T {
@@ -87,6 +91,9 @@ export const useTopologyStore = defineStore('topology', () => {
   const dependencyNodeParams = ref<Record<string, Record<string, unknown>>>({})
   const dependencyNodeConfig = ref<Record<string, Record<string, unknown>>>({})
 
+  /** 连线参数：按 edgeId 存储（如网络环境等链路属性） */
+  const edgeParams = ref<Record<string, Record<string, unknown>>>({})
+
   /** 撤销/重做：针对完整 JSON 状态（拓扑 + 所有节点 params/config） */
   const historyPast = ref<TopologyFullState[]>([])
   const historyFuture = ref<TopologyFullState[]>([])
@@ -104,6 +111,7 @@ export const useTopologyStore = defineStore('topology', () => {
       runtimeConfig: runtimeConfig.value,
       dependencyNodeParams: dependencyNodeParams.value,
       dependencyNodeConfig: dependencyNodeConfig.value,
+      edgeParams: edgeParams.value,
     }
   }
 
@@ -119,6 +127,7 @@ export const useTopologyStore = defineStore('topology', () => {
     runtimeConfig.value = c.runtimeConfig
     dependencyNodeParams.value = c.dependencyNodeParams
     dependencyNodeConfig.value = c.dependencyNodeConfig
+    edgeParams.value = c.edgeParams ?? {}
   }
 
   /** 在发生变更前调用，将当前状态压入历史（并清空 redo 栈） */
@@ -178,6 +187,11 @@ export const useTopologyStore = defineStore('topology', () => {
       ...topology.value,
       edges: [...topology.value.edges, edge],
     }
+    // 自动填充连线默认参数（如有 Schema）
+    const defaultEdge = getEdgeDefaultParams(sourceNode.layerId, targetNode.layerId)
+    if (Object.keys(defaultEdge).length > 0) {
+      edgeParams.value = { ...edgeParams.value, [id]: defaultEdge }
+    }
     return { ok: true, edge }
   }
 
@@ -189,6 +203,12 @@ export const useTopologyStore = defineStore('topology', () => {
     topology.value = {
       ...topology.value,
       edges: topology.value.edges.filter((e) => e.id !== edgeId),
+    }
+    // 清理连线参数
+    if (edgeParams.value[edgeId]) {
+      const next = { ...edgeParams.value }
+      delete next[edgeId]
+      edgeParams.value = next
     }
   }
 
@@ -345,10 +365,21 @@ export const useTopologyStore = defineStore('topology', () => {
       if (serverNode) toRemove.add(serverNode.id)
     }
     const nodes = topology.value.nodes.filter((n) => !toRemove.has(n.id))
+    const removedEdgeIds = new Set(
+      topology.value.edges
+        .filter((e) => toRemove.has(e.source) || toRemove.has(e.target))
+        .map((e) => e.id),
+    )
     const edges = topology.value.edges.filter(
       (e) => !toRemove.has(e.source) && !toRemove.has(e.target),
     )
     topology.value = { nodes, edges }
+    // 清理被删除连线的参数
+    if (removedEdgeIds.size > 0) {
+      const nextEdge = { ...edgeParams.value }
+      removedEdgeIds.forEach((id) => delete nextEdge[id])
+      edgeParams.value = nextEdge
+    }
     if (node.layerId === 'dependency' || toRemove.size > 1) {
       const nextParams = { ...dependencyNodeParams.value }
       const nextConfig = { ...dependencyNodeConfig.value }
@@ -384,6 +415,22 @@ export const useTopologyStore = defineStore('topology', () => {
     runtimeConfig.value = getDefaultConfig('runtime') as RuntimeConfig
   }
 
+  /** 重置连线参数为默认值 */
+  function resetEdgeParams(edgeId: string) {
+    const edge = topology.value.edges.find((e) => e.id === edgeId)
+    if (!edge) return
+    const sourceNode = topology.value.nodes.find((n) => n.id === edge.source)
+    const targetNode = topology.value.nodes.find((n) => n.id === edge.target)
+    if (!sourceNode || !targetNode) return
+    const schema = getEdgeParamsSchema(sourceNode.layerId, targetNode.layerId)
+    if (!schema) return
+    pushState()
+    edgeParams.value = {
+      ...edgeParams.value,
+      [edgeId]: getEdgeDefaultParams(sourceNode.layerId, targetNode.layerId),
+    }
+  }
+
   function resetDependencyNode(nodeId: string) {
     const node = topology.value.nodes.find((n) => n.id === nodeId)
     if (!node || node.layerId !== 'dependency' || !node.dependencyKind) return
@@ -410,6 +457,7 @@ export const useTopologyStore = defineStore('topology', () => {
     runtimeConfig,
     dependencyNodeParams,
     dependencyNodeConfig,
+    edgeParams,
     canUndo,
     canRedo,
     pushState,
@@ -427,5 +475,6 @@ export const useTopologyStore = defineStore('topology', () => {
     resetHost,
     resetRuntime,
     resetDependencyNode,
+    resetEdgeParams,
   }
 })

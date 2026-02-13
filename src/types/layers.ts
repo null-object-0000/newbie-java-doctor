@@ -11,10 +11,9 @@ export interface GlobalCoreParams {
 }
 
 // ========== Client Layer 客户端层 ==========
+/** 网络环境（已迁移至连线参数，保留类型供连线使用） */
 export type NetworkEnv = 'public' | 'intra_dc' | 'cross_dc'  // 公网 | 内网同中心 | 内网跨中心
 export interface ClientLayerParams {
-  networkEnv: NetworkEnv
-  messageSizeBytes: number
   concurrentUsers: number
   targetThroughputRps: number
   expectedFailureRatePercent: number

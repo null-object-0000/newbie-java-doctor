@@ -124,8 +124,30 @@ export interface DependencyNodeTypeDefinition {
 /** 层在拓扑中的排序与插入顺序：按该数组顺序依次比较 */
 export type LayerOrder = string[]
 
+// ========== 连线类型定义 ==========
+
+/**
+ * 连线类型定义：按 sourceLayerId + targetLayerId 唯一标识
+ * 用于为特定层之间的连线注册可编辑的参数 Schema
+ */
+export interface EdgeTypeDefinition {
+  /** 源节点层 ID */
+  sourceLayerId: string
+  /** 目标节点层 ID */
+  targetLayerId: string
+  /** 连线参数表单 Schema */
+  paramsSchema?: FormSchema
+  /** 连线上要展示的参数字段 key 列表（显示为 edge label） */
+  edgeDisplay?: { params?: string[] }
+}
+
+// ========== 扩展注册类型 ==========
+
 /** 扩展用：注册单个层（同 id 会覆盖） */
 export type RegisterLayer = (def: LayerDefinition) => void
 
 /** 扩展用：向依赖层追加一种子节点类型（同 kind 会覆盖） */
 export type RegisterDependencyNodeType = (def: DependencyNodeTypeDefinition) => void
+
+/** 扩展用：注册连线类型（同 sourceLayerId+targetLayerId 会覆盖） */
+export type RegisterEdgeType = (def: EdgeTypeDefinition) => void

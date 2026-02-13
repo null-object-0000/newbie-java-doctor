@@ -29,6 +29,8 @@ const props = withDefaults(
     nodes: TopologyNode[]
     edges: TopologyEdge[]
     layerDisplayFields?: Record<string, { label: string; displayText: string }[]>
+    /** 连线上展示的字段（key 为 edgeId） */
+    edgeDisplayFields?: Record<string, { label: string; displayText: string }[]>
     /** 各节点是否有输入/输出端口（不传则默认都有） */
     nodePortConfig?: Record<string, { hasInput: boolean; hasOutput: boolean }>
     visible?: boolean
@@ -40,6 +42,7 @@ const props = withDefaults(
   }>(),
   {
     layerDisplayFields: () => ({}),
+    edgeDisplayFields: () => ({}),
     nodePortConfig: () => ({}),
     visible: true,
     canUndo: false,
@@ -53,6 +56,7 @@ const emit = defineEmits<{
   remove: [nodeId: string]
   edit: [node: TopologyNode]
   select: [node: TopologyNode | null]
+  edgeSelect: [edge: TopologyEdge | null]
   drop: [
     payload:
       | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime' }
@@ -316,6 +320,7 @@ function handleNodeClick(_args: {
 
   // 点击节点时清除边选中
   selectEdge(null)
+  emit('edgeSelect', null)
 
   if (target.closest('[data-action="remove"]')) {
     if (raw?.id) emit('remove', raw.id)
@@ -371,7 +376,11 @@ function showNodeContextMenu(e: MouseEvent, nodeId: string) {
 
 function showEdgeContextMenu(e: MouseEvent, edgeId: string) {
   ctxTarget = { type: 'edge', id: edgeId }
-  ctxMenu.options = [{ label: '删除连线', key: 'delete-edge' }]
+  ctxMenu.options = [
+    { label: '编辑属性', key: 'edit-edge' },
+    { type: 'divider', key: 'd1' },
+    { label: '删除连线', key: 'delete-edge' },
+  ]
   ctxMenu.x = e.clientX
   ctxMenu.y = e.clientY
   ctxMenu.show = true
@@ -403,9 +412,19 @@ function onCtxMenuSelect(key: string) {
       if (ctxTarget.id) emit('remove', ctxTarget.id)
       break
     }
+    case 'edit-edge': {
+      const edge = props.edges.find((e) => e.id === ctxTarget.id)
+      if (edge) {
+        selectEdge(edge.id)
+        emit('select', null)
+        emit('edgeSelect', edge)
+      }
+      break
+    }
     case 'delete-edge': {
       if (ctxTarget.id) {
         emit('edgeRemoved', ctxTarget.id)
+        emit('edgeSelect', null)
         if (selectedEdgeId.value === ctxTarget.id) selectEdge(null)
       }
       break
@@ -524,6 +543,7 @@ function doSyncGraph() {
   const dataNodes = props.nodes
   const dataEdges = props.edges
   const displayFieldsMap = props.layerDisplayFields ?? {}
+  const edgeDisplayMap = props.edgeDisplayFields ?? {}
 
   // --- Sync Nodes ---
   const dataNodeIds = new Set(dataNodes.map((n) => n.id))
@@ -628,10 +648,49 @@ function doSyncGraph() {
       : EDGE_COLORS.default
   }
 
+  /** 生成连线上的标签文案（如「公网」） */
+  function buildEdgeLabelText(edgeId: string): string {
+    const fields = edgeDisplayMap[edgeId]
+    if (!fields?.length) return ''
+    return fields.map((f) => f.displayText).join(' / ')
+  }
+
+  /** 构建 X6 edge labels 配置 */
+  function buildEdgeLabels(edgeId: string) {
+    const text = buildEdgeLabelText(edgeId)
+    if (!text) return []
+    return [
+      {
+        attrs: {
+          label: {
+            text,
+            fill: '#555',
+            fontSize: 11,
+            fontFamily: 'inherit',
+          },
+          rect: {
+            ref: 'label',
+            fill: '#fff',
+            stroke: '#ddd',
+            strokeWidth: 1,
+            rx: 3,
+            ry: 3,
+            refWidth: 8,
+            refHeight: 4,
+            refX: -4,
+            refY: -2,
+          },
+        },
+        position: { distance: 0.5 },
+      },
+    ]
+  }
+
   // 2) 添加缺失的边 / 同步已有边
   for (const edge of dataEdges) {
     const stroke = getEdgeColor(edge)
     const { source, target, isGroupEdge } = getEdgeEndpoints(edge)
+    const labels = buildEdgeLabels(edge.id)
     const existing = graph.getCellById(edge.id)
     if (!existing) {
       graph.addEdge({
@@ -640,6 +699,7 @@ function doSyncGraph() {
         source,
         target,
         vertices: edge.vertices ?? [],
+        labels,
         connector: { name: 'smooth', args: { direction: isGroupEdge ? 'H' : 'V' } },
         tools: [], // 删除按钮仅在选中该连线时显示，见 selectEdge
         attrs: {
@@ -653,6 +713,8 @@ function doSyncGraph() {
       addedNew = true
     } else {
       existing.setAttrByPath('line/stroke', stroke)
+      // 同步连线标签
+      ;(existing as unknown as { setLabels: (l: unknown[]) => void }).setLabels(labels)
       if (isGroupEdge) {
         ;(existing as unknown as { setSource: (s: typeof source) => void }).setSource(source)
         ;(existing as unknown as { setTarget: (t: typeof target) => void }).setTarget(target)
@@ -1034,6 +1096,9 @@ onMounted(() => {
     selectEdge(edge.id)
     // 取消节点选中
     emit('select', null)
+    // 通知父组件选中了哪条连线（用于打开连线编辑面板）
+    const dataEdge = props.edges.find((e) => e.id === edge.id)
+    emit('edgeSelect', dataEdge ?? null)
   })
   graph.on('edge:mouseenter', ({ edge }: { edge: { id: string } }) => {
     if (!graph) return
@@ -1053,6 +1118,7 @@ onMounted(() => {
   graph.on('blank:click', () => {
     selectEdge(null)
     emit('select', null)
+    emit('edgeSelect', null)
   })
 
   // ---- Edge lifecycle events ----
@@ -1109,7 +1175,7 @@ onUnmounted(() => {
 
 // ========== Watchers ==========
 watch(
-  () => [props.nodes, props.edges, props.layerDisplayFields, props.nodePortConfig],
+  () => [props.nodes, props.edges, props.layerDisplayFields, props.edgeDisplayFields, props.nodePortConfig],
   () => syncGraph(),
   { deep: true },
 )
