@@ -33,7 +33,7 @@ export function getGlobalCoreParamsSchema(): FormSchema {
 }
 
 export function getDefaultGlobalCoreParams(): GlobalCoreParams {
-  return buildFromSchema(GLOBAL_CORE_PARAMS_SCHEMA) as GlobalCoreParams
+  return buildFromSchema(GLOBAL_CORE_PARAMS_SCHEMA) as unknown as GlobalCoreParams
 }
 
 function findFieldInSchema(schema: FormSchema, key: string): FieldDefinition | undefined {
