@@ -17,6 +17,13 @@ import type {
   NodeIoRules,
 } from '../spec'
 import { buildFromSchema } from '../schemaBuild'
+import {
+  getGlobalCoreParamsSchema as getGlobalCoreParamsSchemaImpl,
+  getDefaultGlobalCoreParams as getDefaultGlobalCoreParamsImpl,
+  getGlobalCoreParamsFieldLabel as getGlobalCoreParamsFieldLabelImpl,
+  getGlobalCoreParamsValueLabel as getGlobalCoreParamsValueLabelImpl,
+  isGlobalCoreParamKey,
+} from '../globalCoreParams'
 import { clientLayer } from './client'
 import { accessLayer } from './access'
 import { hostLayer } from './host'
@@ -139,6 +146,12 @@ export function getDependencyNodeTypeLabel(kind: string): string {
   return list.find((c) => c.kind === kind)?.label ?? kind
 }
 
+/** 按 kind 取依赖子类型 clientServer（client_only | client_and_server） */
+export function getDependencyClientServer(kind: string): 'client_only' | 'client_and_server' {
+  const child = getDependencyNodeType(kind)
+  return child?.clientServer ?? 'client_only'
+}
+
 /** 层在拓扑图中的主题色（如 blue/gray/green/orange），不设则 blue */
 export function getLayerTheme(layerId: string): string {
   return getLayerById(layerId)?.theme ?? 'blue'
@@ -219,31 +232,64 @@ export function getDependencyKindLabels(): Record<string, string> {
   }, {})
 }
 
-/** 该层核心参数表单 Schema（只读）。依赖层需传 dependencyKind，取该子类型的 schema */
-export function getParamsSchema(layerId: string, dependencyKind?: string): FormSchema | undefined {
+/** 依赖层节点角色：client_and_server 时按 role 取 server/client 各自 schema */
+export type DependencyRole = 'client' | 'server'
+
+function getDependencySchemaByRole(
+  child: DependencyNodeTypeDefinition | undefined,
+  role: DependencyRole | undefined,
+  kind: 'params' | 'config'
+): FormSchema | undefined {
+  if (!child) return undefined
+  const isServer = role === 'server'
+  const isClient = role === 'client'
+  if (child.clientServer === 'client_and_server') {
+    if (kind === 'params') return isServer ? child.serverParamsSchema : isClient ? child.clientParamsSchema : undefined
+    return isServer ? child.serverConfigSchema : isClient ? child.clientConfigSchema : undefined
+  }
+  return kind === 'params' ? child.paramsSchema : child.configSchema
+}
+
+/** 该层核心参数表单 Schema（只读）。依赖层需传 dependencyKind；client_and_server 时传 dependencyRole 取 server/client 各自 schema */
+export function getParamsSchema(
+  layerId: string,
+  dependencyKind?: string,
+  dependencyRole?: DependencyRole
+): FormSchema | undefined {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    return child?.paramsSchema ? deepClone(child.paramsSchema) : undefined
+    const schema = getDependencySchemaByRole(child, dependencyRole, 'params')
+    return schema ? deepClone(schema) : undefined
   }
   const layer = getLayerById(layerId)
   return layer?.paramsSchema ? deepClone(layer.paramsSchema) : undefined
 }
 
-/** 该层核心配置表单 Schema（只读）。依赖层需传 dependencyKind，取该子类型的 schema */
-export function getConfigSchema(layerId: string, dependencyKind?: string): FormSchema | undefined {
+/** 该层核心配置表单 Schema（只读）。依赖层需传 dependencyKind；client_and_server 时传 dependencyRole 取 server/client 各自 schema */
+export function getConfigSchema(
+  layerId: string,
+  dependencyKind?: string,
+  dependencyRole?: DependencyRole
+): FormSchema | undefined {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    return child?.configSchema ? deepClone(child.configSchema) : undefined
+    const schema = getDependencySchemaByRole(child, dependencyRole, 'config')
+    return schema ? deepClone(schema) : undefined
   }
   const layer = getLayerById(layerId)
   return layer?.configSchema ? deepClone(layer.configSchema) : undefined
 }
 
-/** 该层核心参数默认值（深拷贝）。依赖层需传 dependencyKind，按该子类型 schema 生成 */
-export function getDefaultParams(layerId: string, dependencyKind?: string): unknown {
+/** 该层核心参数默认值（深拷贝）。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
+export function getDefaultParams(
+  layerId: string,
+  dependencyKind?: string,
+  dependencyRole?: DependencyRole
+): unknown {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    if (child?.paramsSchema) return buildFromSchema(child.paramsSchema)
+    const schema = getDependencySchemaByRole(child, dependencyRole, 'params')
+    if (schema) return buildFromSchema(schema)
     return {}
   }
   const layer = getLayerById(layerId)
@@ -253,11 +299,16 @@ export function getDefaultParams(layerId: string, dependencyKind?: string): unkn
   return undefined
 }
 
-/** 该层核心配置默认值（深拷贝）。依赖层需传 dependencyKind，按该子类型 schema 生成 */
-export function getDefaultConfig(layerId: string, dependencyKind?: string): unknown {
+/** 该层核心配置默认值（深拷贝）。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
+export function getDefaultConfig(
+  layerId: string,
+  dependencyKind?: string,
+  dependencyRole?: DependencyRole
+): unknown {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    if (child?.configSchema) return buildFromSchema(child.configSchema)
+    const schema = getDependencySchemaByRole(child, dependencyRole, 'config')
+    if (schema) return buildFromSchema(schema)
     return {}
   }
   const layer = getLayerById(layerId)
@@ -267,14 +318,20 @@ export function getDefaultConfig(layerId: string, dependencyKind?: string): unkn
   return undefined
 }
 
-/** 该层在拓扑图卡片上要展示的参数/配置 key 列表。依赖层需传 dependencyKind，取该子类型的 topologyDisplay */
+/** 该层在拓扑图卡片上要展示的参数/配置 key 列表。依赖层需传 dependencyKind、dependencyRole（client_and_server 时取 server/client 各自 topologyDisplay） */
 export function getTopologyDisplayConfig(
   layerId: string,
-  dependencyKind?: string
+  dependencyKind?: string,
+  dependencyRole?: DependencyRole
 ): { params: string[]; config: string[] } | undefined {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    const disp = child?.topologyDisplay
+    const disp =
+      child?.clientServer === 'client_and_server' && dependencyRole === 'server'
+        ? child.serverTopologyDisplay
+        : child?.clientServer === 'client_and_server' && dependencyRole === 'client'
+          ? child.clientTopologyDisplay
+          : child?.topologyDisplay
     if (!disp || (!disp.params?.length && !disp.config?.length)) return undefined
     return { params: disp.params ?? [], config: disp.config ?? [] }
   }
@@ -303,16 +360,17 @@ function findFieldLabelInSchema(schema: FormSchema | undefined, key: string): st
   return field?.label ?? key
 }
 
-/** 该层某参数/配置字段在拓扑图上的展示名。依赖层需传 dependencyKind，从该子类型 schema 取 */
+/** 该层某参数/配置字段在拓扑图上的展示名。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
 export function getTopologyDisplayFieldLabel(
   layerId: string,
   source: 'params' | 'config',
   key: string,
-  dependencyKind?: string
+  dependencyKind?: string,
+  dependencyRole?: DependencyRole
 ): string {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    const schema = source === 'params' ? child?.paramsSchema : child?.configSchema
+    const schema = getDependencySchemaByRole(child, dependencyRole, source === 'params' ? 'params' : 'config')
     return findFieldLabelInSchema(schema, key)
   }
   const layer = getLayerById(layerId)
@@ -320,18 +378,19 @@ export function getTopologyDisplayFieldLabel(
   return findFieldLabelInSchema(schema, key)
 }
 
-/** 将字段值格式化为拓扑图展示文案。依赖层需传 dependencyKind，从该子类型 schema 取 */
+/** 将字段值格式化为拓扑图展示文案。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
 export function getTopologyDisplayValueLabel(
   layerId: string,
   source: 'params' | 'config',
   key: string,
   value: unknown,
-  dependencyKind?: string
+  dependencyKind?: string,
+  dependencyRole?: DependencyRole
 ): string {
   let schema: FormSchema | undefined
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    schema = source === 'params' ? child?.paramsSchema : child?.configSchema
+    schema = getDependencySchemaByRole(child, dependencyRole, source === 'params' ? 'params' : 'config')
   } else {
     const layer = getLayerById(layerId)
     schema = source === 'params' ? layer?.paramsSchema : layer?.configSchema
@@ -352,3 +411,10 @@ export function getTopologyDisplayValueLabel(
   }
   return String(value)
 }
+
+// ---------- 全局核心参数 API（再导出） ----------
+export const getGlobalCoreParamsSchema = getGlobalCoreParamsSchemaImpl
+export const getDefaultGlobalCoreParams = getDefaultGlobalCoreParamsImpl
+export const getGlobalCoreParamsFieldLabel = getGlobalCoreParamsFieldLabelImpl
+export const getGlobalCoreParamsValueLabel = getGlobalCoreParamsValueLabelImpl
+export { isGlobalCoreParamKey }

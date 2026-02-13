@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { NConfigProvider, NMessageProvider } from 'naive-ui'
+import hljs from 'highlight.js/lib/core'
+import json from 'highlight.js/lib/languages/json'
 import { themeOverrides } from '@/theme'
 import AppLayout from '@/components/AppLayout.vue'
+
+hljs.registerLanguage('json', json)
 </script>
 
 <template>
-  <NConfigProvider :theme-overrides="themeOverrides">
+  <NConfigProvider :theme-overrides="themeOverrides" :hljs="hljs">
     <NMessageProvider>
       <AppLayout />
     </NMessageProvider>
@@ -63,7 +67,7 @@ body {
 }
 
 /* NConfigProvider 根节点撑满，否则内部 height: 100% 无效 */
-#app > * {
+#app>* {
   flex: 1;
   min-height: 0;
   display: flex;

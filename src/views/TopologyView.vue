@@ -7,19 +7,28 @@ import {
   getTopologyDisplayConfig,
   getTopologyDisplayFieldLabel,
   getTopologyDisplayValueLabel,
+  getGlobalCoreParamsFieldLabel,
+  getGlobalCoreParamsValueLabel,
+  isGlobalCoreParamKey,
   getNodeIoRules,
 } from '@/registry/layers'
 import { getByPath } from '@/registry/schemaBuild'
-import { NButton, NButtonGroup, NCard, NCode, NEmpty, NText, useMessage } from 'naive-ui'
+import { NButton, NButtonGroup, NCard, NCode, NEmpty, NSelect, NText, useMessage } from 'naive-ui'
 import TopologyDiagram from '@/components/TopologyDiagram.vue'
 import NodeListPanel from '@/components/NodeListPanel.vue'
 import LayerEditorPanel from '@/components/LayerEditorPanel.vue'
-import type { TopologyNode } from '@/types/layers'
+import type { TopologyNode, BusinessScenario } from '@/types/layers'
+
+const GLOBAL_BUSINESS_SCENARIO_OPTIONS = [
+  { value: 'io', label: 'IO 密集型' },
+  { value: 'compute', label: '计算密集型' },
+]
 
 const message = useMessage()
 const store = useTopologyStore()
 const {
   topology,
+  globalCoreParams,
   clientParams,
   accessParams,
   hostParams,
@@ -28,7 +37,14 @@ const {
   runtimeConfig,
   dependencyNodeParams,
   dependencyNodeConfig,
+  canUndo,
+  canRedo,
 } = storeToRefs(store)
+
+function onGlobalBusinessScenarioChange(v: string) {
+  store.pushState()
+  globalCoreParams.value = { ...globalCoreParams.value, businessScenario: v as BusinessScenario }
+}
 
 function getLayerParams(layerId: LayerId): object {
   switch (layerId) {
@@ -50,13 +66,14 @@ function getLayerConfig(layerId: LayerId): object {
   }
 }
 
-/** 按节点生成拓扑图卡片展示字段（key 为 nodeId，依赖层按节点 kind 用各自 schema） */
+/** 按节点生成拓扑图卡片展示字段（key 为 nodeId，依赖层按节点 kind + dependencyRole 用各自 schema） */
 const layerDisplayFields = computed(() => {
   const out: Record<string, { label: string; displayText: string }[]> = {}
   for (const node of topology.value.nodes) {
     const layerId = node.layerId
     const kind = node.layerId === 'dependency' ? node.dependencyKind : undefined
-    const cfg = getTopologyDisplayConfig(layerId, kind)
+    const role = node.layerId === 'dependency' ? node.dependencyRole : undefined
+    const cfg = getTopologyDisplayConfig(layerId, kind, role)
     if (!cfg || (!cfg.params?.length && !cfg.config?.length)) continue
     const params =
       layerId === 'dependency' && node.id
@@ -68,17 +85,22 @@ const layerDisplayFields = computed(() => {
         : getLayerConfig(layerId as LayerId)
     const rows: { label: string; displayText: string }[] = []
     for (const key of cfg.params ?? []) {
-      const value = getByPath(params, key)
-      rows.push({
-        label: getTopologyDisplayFieldLabel(layerId, 'params', key, kind),
-        displayText: getTopologyDisplayValueLabel(layerId, 'params', key, value, kind),
-      })
+      const value = isGlobalCoreParamKey(key)
+        ? getByPath(globalCoreParams.value, key)
+        : getByPath(params, key)
+      const label = isGlobalCoreParamKey(key)
+        ? getGlobalCoreParamsFieldLabel(key)
+        : getTopologyDisplayFieldLabel(layerId, 'params', key, kind, role)
+      const displayText = isGlobalCoreParamKey(key)
+        ? getGlobalCoreParamsValueLabel(key, value)
+        : getTopologyDisplayValueLabel(layerId, 'params', key, value, kind, role)
+      rows.push({ label, displayText })
     }
     for (const key of cfg.config ?? []) {
       const value = getByPath(config, key)
       rows.push({
-        label: getTopologyDisplayFieldLabel(layerId, 'config', key, kind),
-        displayText: getTopologyDisplayValueLabel(layerId, 'config', key, value, kind),
+        label: getTopologyDisplayFieldLabel(layerId, 'config', key, kind, role),
+        displayText: getTopologyDisplayValueLabel(layerId, 'config', key, value, kind, role),
       })
     }
     if (rows.length) out[node.id] = rows
@@ -89,11 +111,55 @@ const layerDisplayFields = computed(() => {
 type MiddleViewMode = 'graph' | 'json'
 const middleViewMode = ref<MiddleViewMode>('graph')
 
-/** 当前拓扑的 JSON 展示（仅查看） */
-const topologyJson = computed(() => JSON.stringify(topology.value, null, 2))
+/** 根据节点取对应的 params/config（与侧边栏编辑一致） */
+function getNodeParamsConfig(node: TopologyNode): { params: Record<string, unknown>; config: Record<string, unknown> } {
+  const layerId = node.layerId
+  if (layerId === 'dependency' && node.id) {
+    return {
+      params: { ...(dependencyNodeParams.value[node.id] ?? {}) },
+      config: { ...(dependencyNodeConfig.value[node.id] ?? {}) },
+    }
+  }
+  switch (layerId) {
+    case 'client':
+      return { params: { ...clientParams.value } as Record<string, unknown>, config: {} }
+    case 'access':
+      return { params: { ...accessParams.value } as Record<string, unknown>, config: {} }
+    case 'host':
+      return {
+        params: { ...hostParams.value } as Record<string, unknown>,
+        config: { ...hostConfig.value } as Record<string, unknown>,
+      }
+    case 'runtime':
+      return {
+        params: { ...runtimeParams.value } as Record<string, unknown>,
+        config: { ...runtimeConfig.value } as Record<string, unknown>,
+      }
+    default:
+      return { params: {}, config: {} }
+  }
+}
 
-function copyJson() {
-  navigator.clipboard.writeText(topologyJson.value)
+/** 当前拓扑的 JSON 展示（含全局参数与每个节点上的 params/config） */
+const topologyJson = computed(() => {
+  const payload = {
+    globalCoreParams: { ...globalCoreParams.value } as Record<string, unknown>,
+    nodes: topology.value.nodes.map((node) => {
+      const { params, config } = getNodeParamsConfig(node)
+      return { ...node, params, config }
+    }),
+    edges: topology.value.edges,
+  }
+  return JSON.stringify(payload, null, 2)
+})
+
+async function copyJson() {
+  try {
+    await navigator.clipboard.writeText(topologyJson.value)
+    message.success('已复制到剪贴板')
+  } catch {
+    message.error('复制失败，请手动选择后复制')
+  }
 }
 
 /** 当前编辑的节点（点击拓扑图节点时设置；依赖层需据此取 kind 与节点 params/config） */
@@ -165,39 +231,37 @@ function onDropFromPalette(payload: DropPayload) {
       </aside>
       <NCard class="topology-main" :segmented="{ content: true }" size="small">
         <template #header>
-          <NButtonGroup size="small">
-            <NButton
-              :type="middleViewMode === 'graph' ? 'primary' : 'default'"
-              :secondary="middleViewMode === 'graph'"
-              @click="middleViewMode = 'graph'"
-            >
-              拓扑图
-            </NButton>
-            <NButton
-              :type="middleViewMode === 'json' ? 'primary' : 'default'"
-              :secondary="middleViewMode === 'json'"
-              @click="middleViewMode = 'json'"
-            >
-              JSON
-            </NButton>
-          </NButtonGroup>
+          <div class="card-header-row">
+            <NButtonGroup size="small">
+              <NButton :type="middleViewMode === 'graph' ? 'primary' : 'default'"
+                :secondary="middleViewMode === 'graph'" @click="middleViewMode = 'graph'">
+                拓扑图
+              </NButton>
+              <NButton :type="middleViewMode === 'json' ? 'primary' : 'default'" :secondary="middleViewMode === 'json'"
+                @click="middleViewMode = 'json'">
+                JSON
+              </NButton>
+            </NButtonGroup>
+            <div class="global-params-inline">
+              <span class="global-params-label">全局核心参数</span>
+              <NSelect :value="globalCoreParams.businessScenario" :options="GLOBAL_BUSINESS_SCENARIO_OPTIONS"
+                size="small" style="width: 140px"
+                @update:value="onGlobalBusinessScenarioChange" />
+            </div>
+          </div>
         </template>
         <template #header-extra>
-          <NButton
-            v-if="middleViewMode === 'json'"
-            size="tiny"
-            secondary
-            @click="copyJson"
-          >
+          <NButton v-if="middleViewMode === 'json'" size="tiny" secondary @click="copyJson">
             复制
           </NButton>
         </template>
         <div class="middle-content">
           <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
             :layer-display-fields="layerDisplayFields" :node-port-config="nodePortConfig"
-            :visible="middleViewMode === 'graph'"
-            @remove="onRemove" @edit="onEdit" @drop="onDropFromPalette" @node-moved="onNodeMoved"
-            @edge-vertices-changed="onEdgeVerticesChanged" @edge-connected="onEdgeConnected" />
+            :visible="middleViewMode === 'graph'" :can-undo="canUndo" :can-redo="canRedo"
+            @remove="onRemove" @edit="onEdit" @drop="onDropFromPalette"
+            @node-moved="onNodeMoved" @edge-vertices-changed="onEdgeVerticesChanged"
+            @edge-connected="onEdgeConnected" @undo="store.undo" @redo="store.redo" />
           <div v-show="middleViewMode === 'json'" class="json-view">
             <NCode :code="topologyJson" language="json" word-wrap />
           </div>
@@ -205,11 +269,7 @@ function onDropFromPalette(payload: DropPayload) {
       </NCard>
       <aside class="panel-right">
         <div v-if="editingNode" class="panel-right-inner">
-          <LayerEditorPanel
-            :layer-id="editingNode.layerId"
-            :editing-node="editingNode"
-            @close="editingNode = null"
-          />
+          <LayerEditorPanel :layer-id="editingNode.layerId" :editing-node="editingNode" @close="editingNode = null" />
         </div>
         <NEmpty v-else description="点击拓扑图中的节点可在此编辑该层属性" class="panel-placeholder" />
       </aside>
@@ -289,6 +349,24 @@ function onDropFromPalette(payload: DropPayload) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.card-header-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.global-params-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.global-params-label {
+  font-size: 12px;
+  color: var(--n-text-color-3);
 }
 
 .panel-placeholder {

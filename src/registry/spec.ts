@@ -90,18 +90,35 @@ export interface LayerDefinition {
   defaultConfig?: unknown
 }
 
+/** 依赖层子节点在拓扑中的角色：仅客户端 / 既有 client 又有 server（拓扑上为两个独立节点组合） */
+export type DependencyClientServer = 'client_only' | 'client_and_server'
+
 /** 依赖层下的子节点类型：kind 唯一，label 用于展示；各子类型拥有自己的 schema 与拓扑展示 */
 export interface DependencyNodeTypeDefinition {
   kind: string
   label: string
+  /** 是否仅 client，或既有 client 又有 server（拖入时自动创建并关联两个节点，配置完全分开） */
+  clientServer: DependencyClientServer
   /** 该子类型的输入输出规则（覆盖依赖层的 ioRules） */
   ioRules?: NodeIoRules
-  /** 该子类型的核心参数 Schema，不继承父级 */
+  /** client_only 时：核心参数 Schema；client_and_server 时：仅作备用，优先用 server/client 各自 schema */
   paramsSchema?: FormSchema
-  /** 该子类型的核心配置 Schema，不继承父级 */
+  /** client_only 时：核心配置 Schema；client_and_server 时：仅作备用 */
   configSchema?: FormSchema
-  /** 该子类型在拓扑图卡片上展示的参数字段 */
+  /** client_and_server 时：Server 侧核心参数 Schema */
+  serverParamsSchema?: FormSchema
+  /** client_and_server 时：Server 侧核心配置 Schema */
+  serverConfigSchema?: FormSchema
+  /** client_and_server 时：Client 侧核心参数 Schema */
+  clientParamsSchema?: FormSchema
+  /** client_and_server 时：Client 侧核心配置 Schema */
+  clientConfigSchema?: FormSchema
+  /** 该子类型在拓扑图卡片上展示的参数字段（client_only 用；client_and_server 时用 server/client 各自 topologyDisplay） */
   topologyDisplay?: TopologyDisplayConfig
+  /** client_and_server 时：Server 节点在拓扑上的展示字段 */
+  serverTopologyDisplay?: TopologyDisplayConfig
+  /** client_and_server 时：Client 节点在拓扑上的展示字段 */
+  clientTopologyDisplay?: TopologyDisplayConfig
 }
 
 /** 层在拓扑中的排序与插入顺序：按该数组顺序依次比较 */

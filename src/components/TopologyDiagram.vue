@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { Graph, Shape, Snapline } from '@antv/x6'
+import { Graph, Shape, Snapline, Keyboard } from '@antv/x6'
 import { NButton, NButtonGroup, NTooltip } from 'naive-ui'
 import { getLayerIcon, getLayerTheme } from '@/registry/layers'
 import type { TopologyNode, TopologyEdge, DependencyKind } from '@/types/layers'
@@ -8,10 +8,21 @@ import type { TopologyNode, TopologyEdge, DependencyKind } from '@/types/layers'
 const CARD_WIDTH = 260
 const CARD_HEIGHT = 128
 const GAP = 28
+/** client 与 server 之间的水平间距（预留连线上显示内容） */
+const GROUP_CLIENT_SERVER_GAP = 72
 const PADDING = 40
 const PORT_R = 3
 const COLOR_PORT = '#C2C8D5'
-const COLOR_PORT_ACTIVE = '#5F95FF'
+
+/** 连线含义与颜色：不同语义用不同颜色区分（需对外引用时可抽到单独 constants 文件） */
+const EDGE_COLORS = {
+  /** 默认：层与层之间的数据/请求流向 */
+  default: '#5F95FF',
+  /** 依赖组内：客户端 → 服务端（应用连接依赖） */
+  group_client_server: '#52c41a',
+} as const
+
+const COLOR_PORT_ACTIVE = EDGE_COLORS.default
 
 const props = withDefaults(
   defineProps<{
@@ -21,8 +32,11 @@ const props = withDefaults(
     /** 各节点是否有输入/输出端口（不传则默认都有） */
     nodePortConfig?: Record<string, { hasInput: boolean; hasOutput: boolean }>
     visible?: boolean
+    /** 撤销/重做由外部（完整 JSON 状态）提供 */
+    canUndo?: boolean
+    canRedo?: boolean
   }>(),
-  { layerDisplayFields: () => ({}), nodePortConfig: () => ({}), visible: true }
+  { layerDisplayFields: () => ({}), nodePortConfig: () => ({}), visible: true, canUndo: false, canRedo: false }
 )
 
 const emit = defineEmits<{
@@ -36,6 +50,8 @@ const emit = defineEmits<{
   nodeMoved: [payload: { nodeId: string; x: number; y: number }]
   edgeVerticesChanged: [payload: { edgeId: string; vertices: { x: number; y: number }[] }]
   edgeConnected: [payload: { source: string; target: string }]
+  undo: []
+  redo: []
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
@@ -53,6 +69,56 @@ function getNodePosition(index: number) {
   }
 }
 
+/** 为依赖层同组（dependencyGroupId）节点计算并排布局，其余节点按行占位；返回 nodeId -> { x, y } */
+function buildDependencyPositionMap(
+  dataNodes: TopologyNode[],
+): Record<string, { x: number; y: number }> {
+  const map: Record<string, { x: number; y: number }> = {}
+  const used = new Set<string>()
+  const rows: TopologyNode[][] = []
+
+  for (const node of dataNodes) {
+    if (used.has(node.id)) continue
+    if (node.dependencyGroupId) {
+      const mate = dataNodes.find(
+        (n) => n.id !== node.id && n.dependencyGroupId === node.dependencyGroupId,
+      )
+      if (mate) {
+        const ordered = node.dependencyRole === 'client' ? [node, mate] : [mate, node]
+        rows.push(ordered)
+        used.add(node.id)
+        used.add(mate.id)
+      } else {
+        rows.push([node])
+        used.add(node.id)
+      }
+    } else {
+      rows.push([node])
+      used.add(node.id)
+    }
+  }
+
+  rows.forEach((row, rowIndex) => {
+    const first = row[0]
+    if (!first) return
+    const hasStoredPosition = first.x != null && first.y != null
+    const baseX = (hasStoredPosition ? first.x : null) ?? PADDING
+    const baseY = (hasStoredPosition ? first.y : null) ?? PADDING + rowIndex * (CARD_HEIGHT + GAP)
+    const isClientServerRow = row.length === 2 && first.dependencyGroupId != null
+    row.forEach((node, slot) => {
+      const dx =
+        isClientServerRow && slot === 1
+          ? CARD_WIDTH + GROUP_CLIENT_SERVER_GAP
+          : slot * (CARD_WIDTH + GAP)
+      map[node.id] = {
+        x: baseX + dx,
+        y: baseY,
+      }
+    })
+  })
+  return map
+}
+
 // ---- 端口配置 ----
 const basePortAttrs = {
   r: PORT_R,
@@ -63,7 +129,7 @@ const basePortAttrs = {
   style: { visibility: 'hidden' as const },
 }
 
-function createPortGroup(position: 'top' | 'bottom') {
+function createPortGroup(position: 'top' | 'bottom' | 'left' | 'right') {
   return { position, attrs: { circle: { ...basePortAttrs } } }
 }
 
@@ -71,20 +137,33 @@ const PORTS = {
   groups: {
     top: createPortGroup('top'),
     bottom: createPortGroup('bottom'),
+    left: createPortGroup('left'),
+    right: createPortGroup('right'),
   },
   items: [
     { id: 'top', group: 'top' },
     { id: 'bottom', group: 'bottom' },
+    { id: 'left', group: 'left' },
+    { id: 'right', group: 'right' },
   ],
 }
 
 function getPortsForNode(nodeId: string) {
+  const node = props.nodes.find((n) => n.id === nodeId)
+  if (node?.dependencyRole === 'server' && node.dependencyGroupId != null) {
+    return { groups: PORTS.groups, items: [] }
+  }
   const cfg = props.nodePortConfig?.[nodeId]
   const hasInput = cfg?.hasInput !== false
   const hasOutput = cfg?.hasOutput !== false
+  const hasSidePorts = node?.dependencyGroupId != null
   const items: { id: string; group: string }[] = []
   if (hasInput) items.push({ id: 'top', group: 'top' })
   if (hasOutput) items.push({ id: 'bottom', group: 'bottom' })
+  if (hasSidePorts) {
+    items.push({ id: 'left', group: 'left' })
+    items.push({ id: 'right', group: 'right' })
+  }
   return {
     groups: PORTS.groups,
     items: items.length > 0 ? items : PORTS.items,
@@ -105,7 +184,7 @@ function registerShapes() {
       inherit: 'edge',
       attrs: {
         line: {
-          stroke: COLOR_PORT_ACTIVE,
+          stroke: EDGE_COLORS.default,
           strokeWidth: 2,
           targetMarker: { name: 'block', size: 8 },
         },
@@ -130,6 +209,7 @@ function registerShapes() {
       wrap.setAttribute('draggable', 'false')
       wrap.addEventListener('dragstart', (e) => e.preventDefault())
       if (node.nodeSource === 'user') wrap.classList.add('user')
+      if (node.dependencyRole === 'server' && node.dependencyGroupId) wrap.classList.add('topology-card-follows-client')
 
       const header = document.createElement('div')
       header.className = 'topology-card-header'
@@ -145,7 +225,8 @@ function registerShapes() {
       const actions = document.createElement('div')
       actions.className = 'topology-card-actions'
 
-      if (node.nodeSource === 'user') {
+      const canRemove = node.nodeSource === 'user' && !(node.dependencyRole === 'server' && node.dependencyGroupId)
+      if (canRemove) {
         const removeBtn = document.createElement('span')
         removeBtn.className = 'op'
         removeBtn.title = '删除节点'
@@ -203,13 +284,25 @@ function isPortConnected(nodeId: string, portId: string): boolean {
   )
 }
 
+type NodeWithPorts = { getPorts: () => { id: string }[]; setPortProp: (a: string, b: string, c: string) => void }
+
+function hasPort(
+  node: ReturnType<Graph['getCellById']>,
+  portId: string,
+): boolean {
+  if (!node || !graph?.isNode(node)) return false
+  const n = node as unknown as NodeWithPorts
+  const ports = n.getPorts?.()
+  return Array.isArray(ports) && ports.some((p) => p.id === portId)
+}
+
 function setPortVisible(
   node: ReturnType<Graph['getCellById']>,
   portId: string,
   visible: boolean,
 ) {
-  if (!node || !graph?.isNode(node)) return
-  ;(node as { setPortProp: (a: string, b: string, c: string) => void }).setPortProp(
+  if (!hasPort(node, portId)) return
+  ;(node as unknown as NodeWithPorts).setPortProp(
     portId,
     'attrs/circle/style/visibility',
     visible ? 'visible' : 'hidden',
@@ -221,8 +314,8 @@ function setPortColor(
   portId: string,
   color: string,
 ) {
-  if (!node || !graph?.isNode(node)) return
-  const n = node as { setPortProp: (a: string, b: string, c: string) => void }
+  if (!hasPort(node, portId)) return
+  const n = node as unknown as NodeWithPorts
   n.setPortProp(portId, 'attrs/circle/fill', color)
   n.setPortProp(portId, 'attrs/circle/stroke', color)
 }
@@ -249,6 +342,11 @@ function showNodePorts(node: { id: string; getPorts: () => { id: string }[] }, s
 // ---- 核心：增量同步（永远不 clearCells，只增删改差异部分） ----
 function syncGraph() {
   if (!graph || !containerRef.value) return
+  doSyncGraph()
+}
+
+function doSyncGraph() {
+  if (!graph || !containerRef.value) return
 
   const dataNodes = props.nodes
   const dataEdges = props.edges
@@ -265,23 +363,28 @@ function syncGraph() {
     }
   }
 
+  const dependencyPositionMap = buildDependencyPositionMap(dataNodes)
+
   // 2) 添加缺失的节点 / 更新已有节点
   let addedNew = false
   dataNodes.forEach((node, i) => {
     const pos =
-      node.x != null && node.y != null
+      dependencyPositionMap[node.id] ??
+      (node.x != null && node.y != null
         ? { x: node.x, y: node.y }
-        : getNodePosition(i)
+        : getNodePosition(i))
     const existing = graph!.getCellById(node.id)
+    const isServerFollowingClient =
+      node.dependencyRole === 'server' && node.dependencyGroupId != null
     if (existing && graph!.isNode(existing)) {
-      // 已存在：只更新位置
       existing.setPosition(pos.x, pos.y)
-      // 仅位置变更时跳过数据与端口更新（避免 HTML 重渲染闪烁）
+      if (typeof (existing as { setMovable?: (v: boolean) => void }).setMovable === 'function') {
+        (existing as { setMovable: (v: boolean) => void }).setMovable(!isServerFollowingClient)
+      }
       if (!positionOnlyRef.value) {
         existing.setData({ raw: node, displayFields: displayFieldsMap[node.id] ?? [] })
       }
     } else {
-      // 不存在：添加新节点（按 nodePortConfig 只显示允许的端口）
       graph!.addNode({
         id: node.id,
         shape: SHAPE_NAME,
@@ -291,7 +394,7 @@ function syncGraph() {
         height: CARD_HEIGHT,
         data: { raw: node, displayFields: displayFieldsMap[node.id] ?? [] },
         ports: getPortsForNode(node.id),
-        movable: true,
+        movable: !isServerFollowingClient,
       })
       addedNew = true
     }
@@ -308,33 +411,95 @@ function syncGraph() {
     }
   }
 
-  // 2) 添加缺失的边
+  /** 同组 client→server 的边：client 用 right 端口，server 无端口用 anchor left；其余边使用下→上 */
+  function getEdgeEndpoints(edge: TopologyEdge): {
+    source: { cell: string; port: string } | { cell: string; port: string }
+    target: { cell: string; port: string } | { cell: string; anchor: { name: string } }
+    isGroupEdge: boolean
+  } {
+    const srcNode = dataNodes.find((n) => n.id === edge.source)
+    const tgtNode = dataNodes.find((n) => n.id === edge.target)
+    const isGroupEdge =
+      srcNode?.dependencyGroupId &&
+      srcNode.dependencyGroupId === tgtNode?.dependencyGroupId &&
+      srcNode.dependencyRole === 'client' &&
+      tgtNode?.dependencyRole === 'server'
+    if (isGroupEdge) {
+      return {
+        source: { cell: edge.source, port: 'right' },
+        target: { cell: edge.target, anchor: { name: 'left' } },
+        isGroupEdge: true,
+      }
+    }
+    return {
+      source: { cell: edge.source, port: 'bottom' },
+      target: { cell: edge.target, port: 'top' },
+      isGroupEdge: false,
+    }
+  }
+
+  /** 按语义返回连线颜色（与 EDGE_COLORS 一致） */
+  function getEdgeColor(edge: TopologyEdge): string {
+    return getEdgeEndpoints(edge).isGroupEdge ? EDGE_COLORS.group_client_server : EDGE_COLORS.default
+  }
+
+  // 2) 添加缺失的边 / 同步已有边的颜色与端点（server 无端口时用 anchor）
   for (const edge of dataEdges) {
+    const stroke = getEdgeColor(edge)
+    const { source, target, isGroupEdge } = getEdgeEndpoints(edge)
     const existing = graph.getCellById(edge.id)
     if (!existing) {
       graph.addEdge({
         id: edge.id,
         shape: EDGE_SHAPE,
-        source: { cell: edge.source, port: 'bottom' },
-        target: { cell: edge.target, port: 'top' },
+        source,
+        target,
         vertices: edge.vertices ?? [],
-        connector: { name: 'smooth', args: { direction: 'V' } },
+        connector: { name: 'smooth', args: { direction: isGroupEdge ? 'H' : 'V' } },
+        attrs: {
+          line: {
+            stroke,
+            strokeWidth: 2,
+            targetMarker: { name: 'block', size: 8 },
+          },
+        },
       })
       addedNew = true
+    } else {
+      existing.setAttrByPath('line/stroke', stroke)
+      if (isGroupEdge) {
+        existing.setSource(source)
+        existing.setTarget(target)
+      }
     }
   }
 
-  // --- 端口激活色 ---
+  // --- 端口激活色（与连线语义一致；server 无端口故不设置）---
   dataEdges.forEach((edge) => {
     const src = graph!.getCellById(edge.source)
     const tgt = graph!.getCellById(edge.target)
+    const { isGroupEdge } = getEdgeEndpoints(edge)
+    const portColor = getEdgeColor(edge)
     if (src && graph!.isNode(src)) {
-      setPortVisible(src, 'bottom', true)
-      setPortColor(src, 'bottom', COLOR_PORT_ACTIVE)
+      if (isGroupEdge) {
+        if (hasPort(src, 'right')) {
+          setPortVisible(src, 'right', true)
+          setPortColor(src, 'right', portColor)
+        }
+      } else {
+        const srcHasOutput = props.nodePortConfig?.[edge.source]?.hasOutput !== false
+        if (srcHasOutput && hasPort(src, 'bottom')) {
+          setPortVisible(src, 'bottom', true)
+          setPortColor(src, 'bottom', portColor)
+        }
+      }
     }
-    if (tgt && graph!.isNode(tgt)) {
-      setPortVisible(tgt, 'top', true)
-      setPortColor(tgt, 'top', COLOR_PORT_ACTIVE)
+    if (tgt && graph!.isNode(tgt) && !isGroupEdge) {
+      const tgtHasInput = props.nodePortConfig?.[edge.target]?.hasInput !== false
+      if (tgtHasInput && hasPort(tgt, 'top')) {
+        setPortVisible(tgt, 'top', true)
+        setPortColor(tgt, 'top', portColor)
+      }
     }
   })
 
@@ -356,6 +521,14 @@ function resetView() {
     graph.zoomTo(1)
     graph.centerContent()
   }
+}
+
+function onUndo() {
+  if (props.canUndo) emit('undo')
+}
+
+function onRedo() {
+  if (props.canRedo) emit('redo')
 }
 
 // ---- 拖拽 drop（只接受节点列表） ----
@@ -387,11 +560,49 @@ function onDrop(e: DragEvent) {
   }
 }
 
+// ---- 消除 passive 警告：X6 内部对 touchstart/mousewheel 未传 passive ----
+const PASSIVE_TYPES = new Set(['touchstart', 'touchmove', 'touchend', 'mousewheel', 'wheel'])
+function patchPassiveEventListeners(el: HTMLElement) {
+  if ((el as { __passivePatched?: boolean }).__passivePatched) return
+  ;(el as { __passivePatched?: boolean }).__passivePatched = true
+  const orig = el.addEventListener.bind(el)
+  el.addEventListener = function (
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ) {
+    const usePassive =
+      PASSIVE_TYPES.has(type) &&
+      (options === undefined || typeof options === 'boolean')
+    orig(type, listener, usePassive ? { passive: true } : options)
+  } as typeof el.addEventListener
+}
+let passivePatchObserver: MutationObserver | null = null
+/** 对容器及其后续动态添加的子节点都加上 passive 补丁（X6 会在内部创建子 div 并绑定 wheel） */
+function patchPassiveForContainerAndDescendants(container: HTMLElement) {
+  patchPassiveEventListeners(container)
+  passivePatchObserver = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node instanceof HTMLElement) {
+          patchPassiveEventListeners(node)
+          node.querySelectorAll?.('*')?.forEach((child) => {
+            if (child instanceof HTMLElement) patchPassiveEventListeners(child)
+          })
+        }
+      }
+    }
+  })
+  passivePatchObserver.observe(container, { childList: true, subtree: true })
+}
+
 // ---- 生命周期 ----
 onMounted(() => {
   if (!containerRef.value) return
 
   registerShapes()
+
+  patchPassiveForContainerAndDescendants(containerRef.value)
 
   graph = new Graph({
     container: containerRef.value,
@@ -404,16 +615,52 @@ onMounted(() => {
       maxScale: 3,
     },
     background: { color: '#fafafa' },
-    interacting: () => ({
-      nodeMovable: true,
-      edgeMovable: true,
-      vertexMovable: true,
-      vertexAddable: true,
-      vertexDeletable: true,
-    }),
+    interacting: (_this: import('@antv/x6').Graph, cellView: import('@antv/x6').CellView | undefined) => {
+      if (!cellView?.cell) {
+        return {
+          nodeMovable: true,
+          edgeMovable: true,
+          vertexMovable: true,
+          vertexAddable: true,
+          vertexDeletable: true,
+        }
+      }
+      const cell = cellView.cell
+      const raw = (cell.getData?.() as { raw?: TopologyNode } | undefined)?.raw
+      const isServerNode =
+        cell.isNode?.() && raw?.dependencyRole === 'server' && raw?.dependencyGroupId
+      return {
+        nodeMovable: !isServerNode,
+        edgeMovable: true,
+        vertexMovable: true,
+        vertexAddable: true,
+        vertexDeletable: true,
+      }
+    },
+  })
+
+  // X6 会在容器内创建子元素并绑定 wheel，同步 patch 已存在的子树
+  containerRef.value.querySelectorAll?.('*')?.forEach((el) => {
+    if (el instanceof HTMLElement) patchPassiveEventListeners(el)
   })
 
   graph.use(new Snapline({ enabled: true }))
+  graph.use(new Keyboard({ enabled: true }))
+
+  graph.bindKey(['delete', 'backspace'], (e) => {
+    e.preventDefault()
+    const cells = graph!.getSelectedCells()
+    const nodes = cells.filter((c) => c.isNode())
+    nodes.forEach((node) => emit('remove', node.id))
+  })
+  graph.bindKey(['ctrl+z', 'meta+z'], (e) => {
+    e.preventDefault()
+    if (props.canUndo) emit('undo')
+  })
+  graph.bindKey(['ctrl+shift+z', 'meta+shift+z'], (e) => {
+    e.preventDefault()
+    if (props.canRedo) emit('redo')
+  })
 
   graph.on('node:click', handleNodeClick)
   graph.on('node:mouseenter', ({ node }: { node: { id: string; getPorts: () => { id: string }[] } }) => {
@@ -444,6 +691,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  passivePatchObserver?.disconnect()
+  passivePatchObserver = null
   graph?.dispose()
   graph = null
 })
@@ -474,6 +723,18 @@ watch(
     <div ref="containerRef" class="x6-container" />
     <div class="zoom-controls">
       <NButtonGroup vertical size="small">
+        <NTooltip placement="left">
+          <template #trigger>
+            <NButton secondary :disabled="!canUndo" @click="onUndo">↶</NButton>
+          </template>
+          撤销 (Ctrl+Z)
+        </NTooltip>
+        <NTooltip placement="left">
+          <template #trigger>
+            <NButton secondary :disabled="!canRedo" @click="onRedo">↷</NButton>
+          </template>
+          重做 (Ctrl+Shift+Z)
+        </NTooltip>
         <NTooltip placement="left">
           <template #trigger>
             <NButton secondary @click="zoomIn">+</NButton>
@@ -545,6 +806,10 @@ watch(
 
 .topology-card.user {
   border-color: var(--accent-dim);
+}
+
+.topology-card-follows-client {
+  cursor: default;
 }
 
 .topology-card-header {

@@ -10,6 +10,8 @@ const props = withDefaults(
     schema: FormSchema
     model: object
     showReset?: boolean
+    /** 在写入 model 前调用（用于撤销栈等） */
+    beforeChange?: () => void
   }>(),
   { showReset: false },
 )
@@ -23,6 +25,7 @@ function fieldValue(field: FieldDefinition) {
 }
 
 function setFieldValue(field: FieldDefinition, value: unknown) {
+  props.beforeChange?.()
   setByPath(props.model as Record<string, unknown>, field.key, value)
 }
 

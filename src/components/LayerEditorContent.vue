@@ -29,9 +29,10 @@ const {
 
 const schema = computed(() => {
   const kind = props.layerId === 'dependency' ? props.editingNode?.dependencyKind : undefined
+  const role = props.layerId === 'dependency' ? props.editingNode?.dependencyRole : undefined
   return props.section === 'params'
-    ? getParamsSchema(props.layerId, kind)
-    : getConfigSchema(props.layerId, kind)
+    ? getParamsSchema(props.layerId, kind, role)
+    : getConfigSchema(props.layerId, kind, role)
 })
 
 const model = computed(() => {
@@ -76,18 +77,10 @@ const showReset = computed(() => !!resetHandler.value)
 <template>
   <div class="layer-editor-content">
     <template v-if="schema">
-      <DynamicForm
-        :schema="schema"
-        :model="model"
-        :show-reset="showReset"
-        @reset="resetHandler?.()"
-      />
+      <DynamicForm :schema="schema" :model="model" :show-reset="showReset" :before-change="() => store.pushState?.()"
+        @reset="resetHandler?.()" />
     </template>
-    <NEmpty
-      v-else
-      :description="section === 'params' ? '本层无核心参数' : '本层无核心配置'"
-      class="section-empty"
-    />
+    <NEmpty v-else :description="section === 'params' ? '本层无核心参数' : '本层无核心配置'" class="section-empty" />
   </div>
 </template>
 

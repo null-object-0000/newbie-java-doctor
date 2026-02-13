@@ -1,15 +1,16 @@
 /**
  * 依赖层定义：无父级共用 schema；各子类型（children）拥有自己的
  * paramsSchema / configSchema / topologyDisplay，拓扑与表单均按 kind 使用子类型 schema。
+ * client_only：仅一个节点，params/config 即 client；client_and_server：Server + Client 两节点组合，配置完全分开。
  */
 
 import type { LayerDefinition, FormSchema, DependencyNodeTypeDefinition } from '../spec'
 
-// ---------- Redis 子类型 ----------
-const redisParamsSchema: FormSchema = {
+// ---------- Redis 子类型（client_and_server：Server 与 Client 配置分开） ----------
+const redisServerParamsSchema: FormSchema = {
   sections: [
     {
-      id: 'redis_params',
+      id: 'redis_server_params',
       label: '核心参数 — Redis Server',
       fields: [
         { key: 'memoryGb', label: '内存容量 (GB)', type: 'number', default: 8, min: 0 },
@@ -19,10 +20,10 @@ const redisParamsSchema: FormSchema = {
   ],
 }
 
-const redisConfigSchema: FormSchema = {
+const redisClientConfigSchema: FormSchema = {
   sections: [
     {
-      id: 'redis_client',
+      id: 'redis_client_config',
       label: '核心配置 — Redis Client',
       fields: [
         {
@@ -41,11 +42,11 @@ const redisConfigSchema: FormSchema = {
   ],
 }
 
-// ---------- Database 子类型 ----------
-const databaseParamsSchema: FormSchema = {
+// ---------- Database 子类型（client_and_server） ----------
+const databaseServerParamsSchema: FormSchema = {
   sections: [
     {
-      id: 'database_params',
+      id: 'database_server_params',
       label: '核心参数 — Database Server',
       fields: [
         { key: 'engine', label: '引擎', type: 'string', default: 'MySQL', placeholder: 'MySQL' },
@@ -63,19 +64,19 @@ const databaseParamsSchema: FormSchema = {
 const redisChild: DependencyNodeTypeDefinition = {
   kind: 'redis',
   label: 'Redis',
-  paramsSchema: redisParamsSchema,
-  configSchema: redisConfigSchema,
-  topologyDisplay: {
-    params: ['memoryGb', 'shardCount'],
-    config: ['redisClient'],
-  },
+  clientServer: 'client_and_server',
+  serverParamsSchema: redisServerParamsSchema,
+  clientConfigSchema: redisClientConfigSchema,
+  serverTopologyDisplay: { params: ['memoryGb', 'shardCount'] },
+  clientTopologyDisplay: { config: ['redisClient'] },
 }
 
 const databaseChild: DependencyNodeTypeDefinition = {
   kind: 'database',
   label: '数据库',
-  paramsSchema: databaseParamsSchema,
-  topologyDisplay: {
+  clientServer: 'client_and_server',
+  serverParamsSchema: databaseServerParamsSchema,
+  serverTopologyDisplay: {
     params: ['engine', 'cpu', 'memoryGb', 'maxConnections'],
   },
 }
@@ -132,6 +133,7 @@ const httpApiConfigSchema: FormSchema = {
 const httpApiChild: DependencyNodeTypeDefinition = {
   kind: 'http_api',
   label: '三方接口',
+  clientServer: 'client_only',
   paramsSchema: httpApiParamsSchema,
   configSchema: httpApiConfigSchema,
   topologyDisplay: {

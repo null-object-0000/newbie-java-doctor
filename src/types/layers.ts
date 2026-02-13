@@ -4,12 +4,15 @@
  * 核心配置：可调优、可基于核心参数自动计算推荐
  */
 
-// ========== Client Layer 客户端层 ==========
+// ========== Global 全局核心参数 ==========
 export type BusinessScenario = 'io' | 'compute'  // IO 密集型 | 计算密集型
-export type NetworkEnv = 'public' | 'intra_dc' | 'cross_dc'  // 公网 | 内网同中心 | 内网跨中心
-
-export interface ClientLayerParams {
+export interface GlobalCoreParams {
   businessScenario: BusinessScenario
+}
+
+// ========== Client Layer 客户端层 ==========
+export type NetworkEnv = 'public' | 'intra_dc' | 'cross_dc'  // 公网 | 内网同中心 | 内网跨中心
+export interface ClientLayerParams {
   networkEnv: NetworkEnv
   messageSizeBytes: number
   concurrentUsers: number
@@ -103,6 +106,9 @@ export type LayerId = 'client' | 'access' | 'host' | 'runtime' | 'dependency'
 /** 依赖层子类型：Redis / 数据库 / 三方接口（可自定义名称） */
 export type DependencyKind = 'redis' | 'database' | 'http_api'
 
+/** 依赖层节点角色：client_only 类型仅 client；client_and_server 类型为组合中的 Server 或 Client */
+export type DependencyRole = 'client' | 'server'
+
 export interface TopologyNode {
   id: string
   layerId: LayerId
@@ -112,6 +118,10 @@ export interface TopologyNode {
   nodeSource?: 'default' | 'user'
   /** 仅当 layerId === 'dependency' 时有效 */
   dependencyKind?: DependencyKind
+  /** 仅当 dependency 且 client_and_server 时：该节点是组合中的 server 还是 client */
+  dependencyRole?: DependencyRole
+  /** 仅当 dependency 且 client_and_server 时：同组 server+client 共用此 id，用于拓扑组合展示与关联 */
+  dependencyGroupId?: string
   x?: number
   y?: number
 }
