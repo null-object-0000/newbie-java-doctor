@@ -80,16 +80,64 @@ const databaseChild: DependencyNodeTypeDefinition = {
   },
 }
 
+// ---------- 三方接口子类型 ----------
+const httpApiParamsSchema: FormSchema = {
+  sections: [
+    {
+      id: 'http_api_params',
+      label: '核心参数 — 三方接口',
+      fields: [
+        {
+          key: 'clientType',
+          label: 'HTTP 客户端',
+          type: 'select',
+          default: 'okhttp',
+          options: [
+            { value: 'java_http', label: 'Java HttpClient' },
+            { value: 'okhttp', label: 'OkHttp' },
+            { value: 'apache', label: 'Apache HttpClient' },
+          ],
+        },
+        {
+          key: 'networkEnv',
+          label: '网络环境',
+          type: 'select',
+          default: 'intra_dc',
+          options: [
+            { value: 'public', label: '公网' },
+            { value: 'intra_dc', label: '内网同中心' },
+            { value: 'cross_dc', label: '内网跨中心' },
+          ],
+        },
+        { key: 'messageSizeBytes', label: '消息大小 (bytes)', type: 'number', default: 1024, min: 0 },
+        { key: 'targetQps', label: '目标 QPS', type: 'number', default: 1000, min: 0 },
+        { key: 'slaRtMs', label: 'SLA 响应时间 (ms)', type: 'number', default: 200, min: 0 },
+      ],
+    },
+  ],
+}
+
+const httpApiConfigSchema: FormSchema = {
+  sections: [
+    {
+      id: 'http_api_config',
+      label: '核心配置 — HTTP 客户端',
+      fields: [
+        { key: 'timeoutMs', label: '超时 (ms)', type: 'number', default: 5000, min: 0 },
+      ],
+    },
+  ],
+}
+
 const httpApiChild: DependencyNodeTypeDefinition = {
   kind: 'http_api',
   label: '三方接口',
-  topologyDisplay: {},
-}
-
-const customChild: DependencyNodeTypeDefinition = {
-  kind: 'custom',
-  label: '自定义依赖',
-  topologyDisplay: {},
+  paramsSchema: httpApiParamsSchema,
+  configSchema: httpApiConfigSchema,
+  topologyDisplay: {
+    params: ['clientType', 'networkEnv', 'targetQps', 'slaRtMs'],
+    config: ['timeoutMs'],
+  },
 }
 
 export const dependencyLayer: LayerDefinition = {
@@ -97,5 +145,5 @@ export const dependencyLayer: LayerDefinition = {
   label: '依赖层',
   icon: 'D',
   theme: 'blue',
-  children: [redisChild, databaseChild, httpApiChild, customChild],
+  children: [redisChild, databaseChild, httpApiChild],
 }

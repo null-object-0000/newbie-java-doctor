@@ -116,11 +116,10 @@ function onEdit(node: TopologyNode) {
   editingNode.value = node
 }
 
-function onAddSubmit(opts: { layerId: 'dependency'; dependencyKind?: import('@/types/layers').DependencyKind; customLabel?: string }): void {
+function onAddSubmit(opts: { layerId: 'dependency'; dependencyKind?: import('@/types/layers').DependencyKind }): void {
   store.addNodeAfter(null, {
     layerId: 'dependency',
     dependencyKind: opts.dependencyKind,
-    customLabel: opts.customLabel,
   })
   closeAddModal()
 }
@@ -149,10 +148,6 @@ function onDropFromPalette(payload: DropPayload) {
   if (payload.type === 'layer') {
     if (!canAddLayer(payload.layerId)) return
     store.addLayerNode(payload.layerId)
-    return
-  }
-  if (payload.kind === 'custom' || payload.kind === 'http_api') {
-    addModalVisible.value = true
     return
   }
   store.addNodeAfter(null, {

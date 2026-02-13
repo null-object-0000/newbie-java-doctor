@@ -9,19 +9,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  submit: [opts: { layerId: 'dependency'; dependencyKind?: DependencyKind; customLabel?: string }]
+  submit: [opts: { layerId: 'dependency'; dependencyKind?: DependencyKind }]
 }>()
 
 const dependencyKind = ref<DependencyKind | ''>('redis')
-const customLabel = ref('')
 
 /** 依赖类型选项来自 registry，支持扩展 */
 const dependencyKindOptions = computed(() =>
   getDependencyNodeTypes().map((c) => ({ value: c.kind as DependencyKind, label: c.label }))
 )
-
-const showCustomLabel = () =>
-  dependencyKind.value === 'http_api' || dependencyKind.value === 'custom'
 
 watch(
   () => props.visible,
@@ -29,18 +25,16 @@ watch(
     if (v) {
       const types = getDependencyNodeTypes()
       dependencyKind.value = (types[0]?.kind as DependencyKind) ?? ''
-      customLabel.value = ''
     }
   }
 )
 
 function submit() {
-  const opts: { layerId: 'dependency'; dependencyKind?: DependencyKind; customLabel?: string } = {
+  const opts: { layerId: 'dependency'; dependencyKind?: DependencyKind } = {
     layerId: 'dependency',
   }
   if (dependencyKind.value) {
     opts.dependencyKind = dependencyKind.value
-    if (showCustomLabel()) opts.customLabel = customLabel.value.trim() || undefined
   }
   emit('submit', opts)
   emit('close')
@@ -66,10 +60,6 @@ function cancel() {
                 {{ opt.label }}
               </option>
             </select>
-          </div>
-          <div v-if="showCustomLabel()" class="field">
-            <label>名称（如：支付接口、风控服务）</label>
-            <input v-model="customLabel" type="text" placeholder="选填" />
           </div>
         </div>
         <div class="modal-actions">

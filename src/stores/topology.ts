@@ -41,9 +41,6 @@ function nextEdgeId(source: string, target: string): string {
 function computeLabel(opts: AddNodeOptions): string {
   if (opts.label) return opts.label
   if (opts.layerId === 'dependency' && opts.dependencyKind) {
-    if (opts.dependencyKind === 'http_api' || opts.dependencyKind === 'custom') {
-      return opts.customLabel?.trim() || getDependencyNodeTypeLabel(opts.dependencyKind)
-    }
     return getDependencyNodeTypeLabel(opts.dependencyKind)
   }
   return getLayerLabel(opts.layerId)
@@ -121,7 +118,6 @@ export const useTopologyStore = defineStore('topology', () => {
       label: computeLabel(effectiveOpts),
       nodeSource: 'user',
       dependencyKind: kind,
-      customLabel: effectiveOpts.customLabel,
     }
     if (kind) {
       dependencyNodeParams.value = {

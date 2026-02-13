@@ -163,7 +163,7 @@ export interface DependencyLayerConfig {
 export type LayerId = 'client' | 'access' | 'host' | 'runtime' | 'dependency'
 
 /** 依赖层子类型：Redis / 数据库 / 三方接口（可自定义名称） */
-export type DependencyKind = 'redis' | 'database' | 'http_api' | 'custom'
+export type DependencyKind = 'redis' | 'database' | 'http_api'
 
 export interface TopologyNode {
   id: string
