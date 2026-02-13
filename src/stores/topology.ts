@@ -7,6 +7,7 @@ import {
   getDependencyNodeTypeLabel,
   getDefaultParams,
   getDefaultConfig,
+  validateEdge,
 } from '@/registry/layers'
 import type {
   ClientLayerParams,
@@ -60,18 +61,37 @@ export const useTopologyStore = defineStore('topology', () => {
   const dependencyNodeParams = ref<Record<string, Record<string, unknown>>>({})
   const dependencyNodeConfig = ref<Record<string, Record<string, unknown>>>({})
 
-  /** 用户从端口拖拽创建的新连线（由用户自行操作） */
-  function addEdge(sourceId: string, targetId: string): TopologyEdge | null {
+  /** 用户从端口拖拽创建的新连线（由用户自行操作）；不符合节点输入输出规则时返回 { ok: false, message } */
+  function addEdge(
+    sourceId: string,
+    targetId: string
+  ): { ok: true; edge: TopologyEdge } | { ok: false; message: string } {
     const nodeIds = new Set(topology.value.nodes.map((n) => n.id))
-    if (!nodeIds.has(sourceId) || !nodeIds.has(targetId)) return null
+    if (!nodeIds.has(sourceId) || !nodeIds.has(targetId)) {
+      return { ok: false, message: '源节点或目标节点不存在' }
+    }
+    const sourceNode = topology.value.nodes.find((n) => n.id === sourceId)
+    const targetNode = topology.value.nodes.find((n) => n.id === targetId)
+    if (!sourceNode || !targetNode) {
+      return { ok: false, message: '源节点或目标节点不存在' }
+    }
+    const validation = validateEdge(
+      { layerId: sourceNode.layerId, dependencyKind: sourceNode.dependencyKind },
+      { layerId: targetNode.layerId, dependencyKind: targetNode.dependencyKind },
+    )
+    if (!validation.valid) {
+      return { ok: false, message: validation.message ?? '不允许该连线' }
+    }
     const id = nextEdgeId(sourceId, targetId)
-    if (topology.value.edges.some((e) => e.source === sourceId && e.target === targetId)) return null
+    if (topology.value.edges.some((e) => e.source === sourceId && e.target === targetId)) {
+      return { ok: false, message: '该连线已存在' }
+    }
     const edge: TopologyEdge = { id, source: sourceId, target: targetId }
     topology.value = {
       ...topology.value,
       edges: [...topology.value.edges, edge],
     }
-    return edge
+    return { ok: true, edge }
   }
 
   /** 更新连线顶点（用户拖拽连线路径后持久化） */

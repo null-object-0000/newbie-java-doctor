@@ -18,9 +18,11 @@ const props = withDefaults(
     nodes: TopologyNode[]
     edges: TopologyEdge[]
     layerDisplayFields?: Record<string, { label: string; displayText: string }[]>
+    /** 各节点是否有输入/输出端口（不传则默认都有） */
+    nodePortConfig?: Record<string, { hasInput: boolean; hasOutput: boolean }>
     visible?: boolean
   }>(),
-  { layerDisplayFields: () => ({}), visible: true }
+  { layerDisplayFields: () => ({}), nodePortConfig: () => ({}), visible: true }
 )
 
 const emit = defineEmits<{
@@ -74,6 +76,19 @@ const PORTS = {
     { id: 'top', group: 'top' },
     { id: 'bottom', group: 'bottom' },
   ],
+}
+
+function getPortsForNode(nodeId: string) {
+  const cfg = props.nodePortConfig?.[nodeId]
+  const hasInput = cfg?.hasInput !== false
+  const hasOutput = cfg?.hasOutput !== false
+  const items: { id: string; group: string }[] = []
+  if (hasInput) items.push({ id: 'top', group: 'top' })
+  if (hasOutput) items.push({ id: 'bottom', group: 'bottom' })
+  return {
+    groups: PORTS.groups,
+    items: items.length > 0 ? items : PORTS.items,
+  }
 }
 
 const SHAPE_NAME = 'topology-node'
@@ -261,12 +276,12 @@ function syncGraph() {
     if (existing && graph!.isNode(existing)) {
       // 已存在：只更新位置
       existing.setPosition(pos.x, pos.y)
-      // 仅位置变更时跳过数据更新（避免 HTML 重渲染闪烁）
+      // 仅位置变更时跳过数据与端口更新（避免 HTML 重渲染闪烁）
       if (!positionOnlyRef.value) {
         existing.setData({ raw: node, displayFields: displayFieldsMap[node.id] ?? [] })
       }
     } else {
-      // 不存在：添加新节点
+      // 不存在：添加新节点（按 nodePortConfig 只显示允许的端口）
       graph!.addNode({
         id: node.id,
         shape: SHAPE_NAME,
@@ -275,7 +290,7 @@ function syncGraph() {
         width: CARD_WIDTH,
         height: CARD_HEIGHT,
         data: { raw: node, displayFields: displayFieldsMap[node.id] ?? [] },
-        ports: PORTS,
+        ports: getPortsForNode(node.id),
         movable: true,
       })
       addedNew = true
@@ -434,7 +449,7 @@ onUnmounted(() => {
 })
 
 watch(
-  () => [props.nodes, props.edges, props.layerDisplayFields],
+  () => [props.nodes, props.edges, props.layerDisplayFields, props.nodePortConfig],
   () => syncGraph(),
   { deep: true },
 )

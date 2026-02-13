@@ -7,14 +7,16 @@ import {
   getTopologyDisplayConfig,
   getTopologyDisplayFieldLabel,
   getTopologyDisplayValueLabel,
+  getNodeIoRules,
 } from '@/registry/layers'
 import { getByPath } from '@/registry/schemaBuild'
-import { NButton, NButtonGroup, NCard, NCode, NEmpty, NText } from 'naive-ui'
+import { NButton, NButtonGroup, NCard, NCode, NEmpty, NText, useMessage } from 'naive-ui'
 import TopologyDiagram from '@/components/TopologyDiagram.vue'
 import NodeListPanel from '@/components/NodeListPanel.vue'
 import LayerEditorPanel from '@/components/LayerEditorPanel.vue'
 import type { TopologyNode } from '@/types/layers'
 
+const message = useMessage()
 const store = useTopologyStore()
 const {
   topology,
@@ -100,6 +102,16 @@ const editingNode = ref<TopologyNode | null>(null)
 const nodes = computed(() => topology.value.nodes)
 const edges = computed(() => topology.value.edges)
 
+/** 各节点的输入输出端口配置（用于拓扑图只显示允许的端口） */
+const nodePortConfig = computed(() => {
+  const out: Record<string, { hasInput: boolean; hasOutput: boolean }> = {}
+  for (const node of topology.value.nodes) {
+    const rules = getNodeIoRules(node.layerId, node.dependencyKind)
+    out[node.id] = { hasInput: rules.hasInput, hasOutput: rules.hasOutput }
+  }
+  return out
+})
+
 /** 是否还能拖入该层（客户端/接入/宿主/运行时各最多 1 个） */
 function canAddLayer(layerId: 'client' | 'access' | 'host' | 'runtime') {
   return !topology.value.nodes.some((n) => n.layerId === layerId)
@@ -122,7 +134,10 @@ function onEdgeVerticesChanged(payload: { edgeId: string; vertices: { x: number;
 }
 
 function onEdgeConnected(payload: { source: string; target: string }) {
-  store.addEdge(payload.source, payload.target)
+  const result = store.addEdge(payload.source, payload.target)
+  if (!result.ok) {
+    message.warning(result.message)
+  }
 }
 
 type DropPayload =
@@ -179,7 +194,8 @@ function onDropFromPalette(payload: DropPayload) {
         </template>
         <div class="middle-content">
           <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
-            :layer-display-fields="layerDisplayFields" :visible="middleViewMode === 'graph'"
+            :layer-display-fields="layerDisplayFields" :node-port-config="nodePortConfig"
+            :visible="middleViewMode === 'graph'"
             @remove="onRemove" @edit="onEdit" @drop="onDropFromPalette" @node-moved="onNodeMoved"
             @edge-vertices-changed="onEdgeVerticesChanged" @edge-connected="onEdgeConnected" />
           <div v-show="middleViewMode === 'json'" class="json-view">

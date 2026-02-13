@@ -49,6 +49,22 @@ export interface TopologyDisplayConfig {
   config?: string[]
 }
 
+/**
+ * 节点输入输出规则：控制拓扑图中连线的合法性
+ * - 是否有输入/输出：无输入则无「上端口」，无输出则无「下端口」
+ * - 是否只接受指定层的输入/输出：限制连线只能来自/指向指定 layerId
+ */
+export interface NodeIoRules {
+  /** 是否有输入端口（可被作为边的 target），默认 true */
+  hasInput?: boolean
+  /** 是否有输出端口（可被作为边的 source），默认 true */
+  hasOutput?: boolean
+  /** 仅接受来自这些 layerId 的输入；不设或空表示接受任意层 */
+  allowedInputLayers?: string[]
+  /** 仅允许连到这些 layerId 的输出；不设或空表示允许连到任意层 */
+  allowedOutputLayers?: string[]
+}
+
 /** 单层定义：id 唯一，label 用于展示，icon 用于节点列表/拓扑图，maxCount 为该层在图中最多出现次数（不设则不限） */
 export interface LayerDefinition {
   id: string
@@ -58,6 +74,8 @@ export interface LayerDefinition {
   theme?: string
   /** 该层节点在图中最多几个，不设或 0 表示不限制 */
   maxCount?: number
+  /** 该层节点的输入输出规则（是否有输入/输出、是否只接受指定层的连线） */
+  ioRules?: NodeIoRules
   /** 仅依赖层使用：该层下可拖入的子节点类型，无则层本身可拖（若 maxCount 允许） */
   children?: DependencyNodeTypeDefinition[]
   /** 在拓扑图节点卡片上展示哪些参数/配置字段（key 为 paramsSchema/configSchema 中的 dot-path） */
@@ -76,6 +94,8 @@ export interface LayerDefinition {
 export interface DependencyNodeTypeDefinition {
   kind: string
   label: string
+  /** 该子类型的输入输出规则（覆盖依赖层的 ioRules） */
+  ioRules?: NodeIoRules
   /** 该子类型的核心参数 Schema，不继承父级 */
   paramsSchema?: FormSchema
   /** 该子类型的核心配置 Schema，不继承父级 */

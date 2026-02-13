@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { NConfigProvider } from 'naive-ui'
+import { NConfigProvider, NMessageProvider } from 'naive-ui'
 import { themeOverrides } from '@/theme'
 import AppLayout from '@/components/AppLayout.vue'
 </script>
 
 <template>
   <NConfigProvider :theme-overrides="themeOverrides">
-    <AppLayout />
+    <NMessageProvider>
+      <AppLayout />
+    </NMessageProvider>
   </NConfigProvider>
 </template>
 

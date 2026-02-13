@@ -14,6 +14,7 @@ import type {
   RegisterDependencyNodeType,
   FormSchema,
   FieldDefinition,
+  NodeIoRules,
 } from '../spec'
 import { buildFromSchema } from '../schemaBuild'
 import { clientLayer } from './client'
@@ -141,6 +142,64 @@ export function getDependencyNodeTypeLabel(kind: string): string {
 /** 层在拓扑图中的主题色（如 blue/gray/green/orange），不设则 blue */
 export function getLayerTheme(layerId: string): string {
   return getLayerById(layerId)?.theme ?? 'blue'
+}
+
+/** 节点输入输出规则：依赖层按子类型取（子类型优先），否则取层定义；未设的字段视为默认（有输入/输出、不限制层） */
+export function getNodeIoRules(
+  layerId: string,
+  dependencyKind?: string
+): Required<NodeIoRules> {
+  const layer = getLayerById(layerId)
+  const base: NodeIoRules = layer?.ioRules ?? {}
+  let rules: NodeIoRules = { ...base }
+  if (layerId === 'dependency' && dependencyKind) {
+    const child = getDependencyNodeType(dependencyKind)
+    if (child?.ioRules) {
+      rules = { ...base, ...child.ioRules }
+    }
+  }
+  return {
+    hasInput: rules.hasInput !== false,
+    hasOutput: rules.hasOutput !== false,
+    allowedInputLayers: rules.allowedInputLayers ?? [],
+    allowedOutputLayers: rules.allowedOutputLayers ?? [],
+  }
+}
+
+/** 校验一条边是否符合节点输入输出规则；用于 addEdge 前校验 */
+export function validateEdge(
+  source: { layerId: string; dependencyKind?: string },
+  target: { layerId: string; dependencyKind?: string }
+): { valid: boolean; message?: string } {
+  const srcRules = getNodeIoRules(source.layerId, source.dependencyKind)
+  const tgtRules = getNodeIoRules(target.layerId, target.dependencyKind)
+  if (!srcRules.hasOutput) {
+    return { valid: false, message: '源节点不允许输出连线' }
+  }
+  if (!tgtRules.hasInput) {
+    return { valid: false, message: '目标节点不接受输入连线' }
+  }
+  if (
+    tgtRules.allowedInputLayers.length > 0 &&
+    !tgtRules.allowedInputLayers.includes(source.layerId)
+  ) {
+    const names = tgtRules.allowedInputLayers.map((id) => getLayerLabel(id)).join('、')
+    return {
+      valid: false,
+      message: `目标节点仅接受来自「${names}」的输入`,
+    }
+  }
+  if (
+    srcRules.allowedOutputLayers.length > 0 &&
+    !srcRules.allowedOutputLayers.includes(target.layerId)
+  ) {
+    const names = srcRules.allowedOutputLayers.map((id) => getLayerLabel(id)).join('、')
+    return {
+      valid: false,
+      message: `源节点仅允许连到「${names}」`,
+    }
+  }
+  return { valid: true }
 }
 
 /** 所有层 id -> label（兼容原有 Record 用法） */

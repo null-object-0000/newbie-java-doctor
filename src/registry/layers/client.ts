@@ -55,6 +55,11 @@ export const clientLayer: LayerDefinition = {
   icon: 'C',
   theme: 'blue',
   maxCount: 1,
+  ioRules: {
+    hasInput: false,
+    hasOutput: true,
+    allowedOutputLayers: ['access'],
+  },
   paramsSchema,
   topologyDisplay: {
     params: ['businessScenario', 'concurrentUsers', 'targetThroughputRps'],

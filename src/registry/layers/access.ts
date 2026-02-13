@@ -34,6 +34,12 @@ export const accessLayer: LayerDefinition = {
   icon: 'G',
   theme: 'gray',
   maxCount: 1,
+  ioRules: {
+    hasInput: true,
+    hasOutput: true,
+    allowedInputLayers: ['client'],
+    allowedOutputLayers: ['host', 'runtime'],
+  },
   paramsSchema,
   topologyDisplay: {
     params: ['nodes'],

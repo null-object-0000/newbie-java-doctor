@@ -145,5 +145,10 @@ export const dependencyLayer: LayerDefinition = {
   label: '依赖层',
   icon: 'D',
   theme: 'blue',
+  ioRules: {
+    hasInput: true,
+    hasOutput: false,
+    allowedInputLayers: ['runtime'],
+  },
   children: [redisChild, databaseChild, httpApiChild],
 }
