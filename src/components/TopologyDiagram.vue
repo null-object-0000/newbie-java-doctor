@@ -581,6 +581,27 @@ let passivePatchObserver: MutationObserver | null = null
 /** 对容器及其后续动态添加的子节点都加上 passive 补丁（X6 会在内部创建子 div 并绑定 wheel） */
 function patchPassiveForContainerAndDescendants(container: HTMLElement) {
   patchPassiveEventListeners(container)
+  // 同步劫持 appendChild/insertBefore，在子节点挂载前就打补丁，避免 X6 先绑定 wheel 再被 MutationObserver 补丁（异步太晚）
+  const origAppend = container.appendChild.bind(container)
+  container.appendChild = function <T extends Node>(child: T): T {
+    if (child instanceof HTMLElement) {
+      patchPassiveEventListeners(child)
+      child.querySelectorAll?.('*')?.forEach((el) => {
+        if (el instanceof HTMLElement) patchPassiveEventListeners(el)
+      })
+    }
+    return origAppend(child) as T
+  }
+  const origInsert = container.insertBefore.bind(container)
+  container.insertBefore = function <T extends Node>(newChild: T, refChild: Node | null): T {
+    if (newChild instanceof HTMLElement) {
+      patchPassiveEventListeners(newChild)
+      newChild.querySelectorAll?.('*')?.forEach((el) => {
+        if (el instanceof HTMLElement) patchPassiveEventListeners(el)
+      })
+    }
+    return origInsert(newChild, refChild) as T
+  }
   passivePatchObserver = new MutationObserver((mutations) => {
     for (const m of mutations) {
       for (const node of m.addedNodes) {
@@ -615,7 +636,7 @@ onMounted(() => {
       maxScale: 3,
     },
     background: { color: '#fafafa' },
-    interacting: (_this: import('@antv/x6').Graph, cellView: import('@antv/x6').CellView | undefined) => {
+    interacting: ((_graph: import('@antv/x6').Graph, cellView: import('@antv/x6').CellView | undefined) => {
       if (!cellView?.cell) {
         return {
           nodeMovable: true,
@@ -626,9 +647,16 @@ onMounted(() => {
         }
       }
       const cell = cellView.cell
-      const raw = (cell.getData?.() as { raw?: TopologyNode } | undefined)?.raw
+      // 优先用 props.nodes 判断，避免 getData 未同步导致 server 仍可拖
+      const dataNode = props.nodes.find((n) => n.id === cell.id)
       const isServerNode =
-        cell.isNode?.() && raw?.dependencyRole === 'server' && raw?.dependencyGroupId
+        cell.isNode?.() &&
+        (dataNode
+          ? dataNode.dependencyRole === 'server' && dataNode.dependencyGroupId != null
+          : !!(
+              (cell.getData?.() as { raw?: TopologyNode } | undefined)?.raw?.dependencyRole ===
+                'server' && (cell.getData?.() as { raw?: TopologyNode } | undefined)?.raw?.dependencyGroupId
+            ))
       return {
         nodeMovable: !isServerNode,
         edgeMovable: true,
@@ -636,7 +664,7 @@ onMounted(() => {
         vertexAddable: true,
         vertexDeletable: true,
       }
-    },
+    }) as import('@antv/x6').CellViewInteracting,
   })
 
   // X6 会在容器内创建子元素并绑定 wheel，同步 patch 已存在的子树
@@ -645,14 +673,20 @@ onMounted(() => {
   })
 
   graph.use(new Snapline({ enabled: true }))
-  graph.use(new Keyboard({ enabled: true }))
+  graph.use(
+    new Keyboard({
+      enabled: true,
+      global: true,
+      guard(e) {
+        const target = e.target as HTMLElement
+        const tag = target?.tagName?.toLowerCase()
+        const editable = target?.isContentEditable
+        if (tag === 'input' || tag === 'textarea' || editable) return false
+        return true
+      },
+    }),
+  )
 
-  graph.bindKey(['delete', 'backspace'], (e) => {
-    e.preventDefault()
-    const cells = graph!.getSelectedCells()
-    const nodes = cells.filter((c) => c.isNode())
-    nodes.forEach((node) => emit('remove', node.id))
-  })
   graph.bindKey(['ctrl+z', 'meta+z'], (e) => {
     e.preventDefault()
     if (props.canUndo) emit('undo')
@@ -669,7 +703,14 @@ onMounted(() => {
   graph.on('node:mouseleave', ({ node }: { node: { id: string; getPorts: () => { id: string }[] } }) => {
     showNodePorts(node, false)
   })
-  graph.on('node:moved', ({ node }: { node: { id: string; getPosition: () => { x: number; y: number } } }) => {
+  graph.on('node:moved', ({ node }: { node: { id: string; getPosition: () => { x: number; y: number }; setPosition: (x: number, y: number) => void } }) => {
+    const dataNode = props.nodes.find((n) => n.id === node.id)
+    const isServerNode =
+      dataNode?.dependencyRole === 'server' && dataNode.dependencyGroupId != null
+    if (isServerNode && dataNode.x != null && dataNode.y != null) {
+      node.setPosition(dataNode.x, dataNode.y)
+      return
+    }
     const pos = node.getPosition()
     positionOnlyRef.value = true
     emit('nodeMoved', { nodeId: node.id, x: pos.x, y: pos.y })
