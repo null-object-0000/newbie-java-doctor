@@ -77,6 +77,12 @@ const containerRef = ref<HTMLElement | null>(null)
  * 避免拖拽结束后不必要的 HTML 重渲染。
  */
 const positionOnlyRef = ref(false)
+/**
+ * 初始渲染时 HTML 自定义节点的 port 元素需要浏览器完成绘制才会挂载到 DOM，
+ * 在此之前创建的边无法正确解析 port 锚点。设为 true 时 doSyncGraph 跳过边同步，
+ * 等节点绑定 port 后再置为 false 并重新 sync。
+ */
+let deferEdgeSync = false
 let graph: Graph | null = null
 
 // ---- Selection state ----
@@ -603,6 +609,12 @@ function doSyncGraph() {
       addedNew = true
     }
   })
+
+  // 若处于延迟边同步阶段，仅同步节点，跳过边和 centerContent
+  if (deferEdgeSync) {
+    positionOnlyRef.value = false
+    return
+  }
 
   // --- Sync Edges ---
   const dataEdgeIds = new Set(dataEdges.map((e) => e.id))
@@ -1163,7 +1175,17 @@ onMounted(() => {
     }
   })
 
+  // Phase 1：仅同步节点，跳过边——此时 HTML 节点的 port 元素尚未挂载到 DOM，
+  // 若此时创建边，X6 无法解析 port 锚点，会 fallback 到节点中心。
+  deferEdgeSync = true
   syncGraph()
+  deferEdgeSync = false
+
+  // Phase 2：等浏览器完成 HTML 节点绘制（port 已在 DOM），再同步边。
+  setTimeout(() => {
+    if (!graph) return
+    doSyncGraph()
+  }, 200)
 })
 
 onUnmounted(() => {

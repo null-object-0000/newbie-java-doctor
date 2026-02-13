@@ -50,9 +50,66 @@ function deepClone<T>(x: T): T {
   return JSON.parse(JSON.stringify(x))
 }
 
-/** 默认拓扑为空，节点与连线均由用户拖入并自行连接 */
+/** 默认拓扑：客户端层 -> 宿主容器层 -> 运行时层（固定 ID，便于识别与初始化边参数） */
+const DEFAULT_NODE_IDS = {
+  client: 'n-client-default',
+  host: 'n-host-default',
+  runtime: 'n-runtime-default',
+} as const
+
+/** 默认节点水平偏移；三层垂直间距（比参考略大） */
+const DEFAULT_LAYOUT = { x: 0, clientY: 0, hostY: 250, runtimeY: 500 }
+
 function buildDefaultTopology(): Topology {
-  return { nodes: [], edges: [] }
+  const clientId = DEFAULT_NODE_IDS.client
+  const hostId = DEFAULT_NODE_IDS.host
+  const runtimeId = DEFAULT_NODE_IDS.runtime
+  const { x, clientY, hostY, runtimeY } = DEFAULT_LAYOUT
+  const nodes: TopologyNode[] = [
+    {
+      id: clientId,
+      layerId: 'client',
+      label: getLayerLabel('client'),
+      nodeSource: 'default',
+      x,
+      y: clientY,
+    },
+    {
+      id: hostId,
+      layerId: 'host',
+      label: getLayerLabel('host'),
+      nodeSource: 'default',
+      x,
+      y: hostY,
+    },
+    {
+      id: runtimeId,
+      layerId: 'runtime',
+      label: getLayerLabel('runtime'),
+      nodeSource: 'default',
+      x,
+      y: runtimeY,
+    },
+  ]
+  const edges: TopologyEdge[] = [
+    { id: nextEdgeId(clientId, hostId), source: clientId, target: hostId },
+    { id: nextEdgeId(hostId, runtimeId), source: hostId, target: runtimeId },
+  ]
+  return { nodes, edges }
+}
+
+/** 为默认拓扑的边生成初始连线参数（如 client->host 的网络环境等） */
+function getDefaultTopologyEdgeParams(topology: Topology): Record<string, Record<string, unknown>> {
+  const result: Record<string, Record<string, unknown>> = {}
+  for (const e of topology.edges) {
+    const src = topology.nodes.find((n) => n.id === e.source)
+    const tgt = topology.nodes.find((n) => n.id === e.target)
+    if (src && tgt) {
+      const def = getEdgeDefaultParams(src.layerId, tgt.layerId)
+      if (Object.keys(def).length > 0) result[e.id] = def
+    }
+  }
+  return result
 }
 
 function nextNodeId(): string {
@@ -75,7 +132,8 @@ function computeLabel(opts: AddNodeOptions, role?: DependencyRole): string {
 }
 
 export const useTopologyStore = defineStore('topology', () => {
-  const topology = ref<Topology>(buildDefaultTopology())
+  const defaultTopology = buildDefaultTopology()
+  const topology = ref<Topology>(defaultTopology)
 
   const globalCoreParams = ref<GlobalCoreParams>(getDefaultGlobalCoreParams())
   const clientParams = ref<ClientLayerParams>(getDefaultParams('client') as ClientLayerParams)
@@ -91,8 +149,10 @@ export const useTopologyStore = defineStore('topology', () => {
   const dependencyNodeParams = ref<Record<string, Record<string, unknown>>>({})
   const dependencyNodeConfig = ref<Record<string, Record<string, unknown>>>({})
 
-  /** 连线参数：按 edgeId 存储（如网络环境等链路属性） */
-  const edgeParams = ref<Record<string, Record<string, unknown>>>({})
+  /** 连线参数：按 edgeId 存储（如网络环境等链路属性）；默认拓扑的边会预填默认值 */
+  const edgeParams = ref<Record<string, Record<string, unknown>>>(
+    getDefaultTopologyEdgeParams(defaultTopology),
+  )
 
   /** 撤销/重做：针对完整 JSON 状态（拓扑 + 所有节点 params/config） */
   const historyPast = ref<TopologyFullState[]>([])
