@@ -25,8 +25,8 @@ const {
   hostConfig,
   runtimeParams,
   runtimeConfig,
-  dependencyParams,
-  dependencyConfig,
+  dependencyNodeParams,
+  dependencyNodeConfig,
 } = storeToRefs(store)
 
 function getLayerParams(layerId: LayerId): object {
@@ -35,7 +35,7 @@ function getLayerParams(layerId: LayerId): object {
     case 'access': return accessParams.value
     case 'host': return hostParams.value
     case 'runtime': return runtimeParams.value
-    case 'dependency': return dependencyParams.value
+    case 'dependency': return {}
     default: return {}
   }
 }
@@ -44,36 +44,44 @@ function getLayerConfig(layerId: LayerId): object {
   switch (layerId) {
     case 'host': return hostConfig.value
     case 'runtime': return runtimeConfig.value
-    case 'dependency': return dependencyConfig.value
+    case 'dependency': return {}
     default: return {}
   }
 }
 
-/** 每层在拓扑图卡片上展示的字段（label + displayText，枚举已映射为选项描述） */
+/** 按节点生成拓扑图卡片展示字段（key 为 nodeId，依赖层按节点 kind 用各自 schema） */
 const layerDisplayFields = computed(() => {
   const out: Record<string, { label: string; displayText: string }[]> = {}
   const layerIds = getLayers().map((l) => l.id)
-  for (const layerId of layerIds) {
-    const cfg = getTopologyDisplayConfig(layerId)
-    if (!cfg) continue
+  for (const node of topology.value.nodes) {
+    const layerId = node.layerId
+    const kind = node.layerId === 'dependency' ? node.dependencyKind : undefined
+    const cfg = getTopologyDisplayConfig(layerId, kind)
+    if (!cfg || (!cfg.params?.length && !cfg.config?.length)) continue
+    const params =
+      layerId === 'dependency' && node.id
+        ? (dependencyNodeParams.value[node.id] ?? {})
+        : getLayerParams(layerId as LayerId)
+    const config =
+      layerId === 'dependency' && node.id
+        ? (dependencyNodeConfig.value[node.id] ?? {})
+        : getLayerConfig(layerId as LayerId)
     const rows: { label: string; displayText: string }[] = []
-    const params = getLayerParams(layerId as LayerId)
-    const config = getLayerConfig(layerId as LayerId)
     for (const key of cfg.params ?? []) {
       const value = getByPath(params, key)
       rows.push({
-        label: getTopologyDisplayFieldLabel(layerId, 'params', key),
-        displayText: getTopologyDisplayValueLabel(layerId, 'params', key, value),
+        label: getTopologyDisplayFieldLabel(layerId, 'params', key, kind),
+        displayText: getTopologyDisplayValueLabel(layerId, 'params', key, value, kind),
       })
     }
     for (const key of cfg.config ?? []) {
       const value = getByPath(config, key)
       rows.push({
-        label: getTopologyDisplayFieldLabel(layerId, 'config', key),
-        displayText: getTopologyDisplayValueLabel(layerId, 'config', key, value),
+        label: getTopologyDisplayFieldLabel(layerId, 'config', key, kind),
+        displayText: getTopologyDisplayValueLabel(layerId, 'config', key, value, kind),
       })
     }
-    if (rows.length) out[layerId] = rows
+    if (rows.length) out[node.id] = rows
   }
   return out
 })
@@ -89,7 +97,8 @@ function copyJson() {
 }
 
 const addModalVisible = ref(false)
-const editingLayerId = ref<LayerId | null>(null)
+/** 当前编辑的节点（点击拓扑图节点时设置；依赖层需据此取 kind 与节点 params/config） */
+const editingNode = ref<TopologyNode | null>(null)
 
 const nodes = computed(() => topology.value.nodes)
 const edges = computed(() => topology.value.edges)
@@ -104,7 +113,7 @@ function closeAddModal() {
 }
 
 function onEdit(node: TopologyNode) {
-  editingLayerId.value = node.layerId
+  editingNode.value = node
 }
 
 function onAddSubmit(opts: { layerId: 'dependency'; dependencyKind?: import('@/types/layers').DependencyKind; customLabel?: string }): void {
@@ -186,8 +195,12 @@ function onDropFromPalette(payload: DropPayload) {
         </div>
       </div>
       <aside class="panel-right">
-        <div v-if="editingLayerId" class="panel-right-inner">
-          <LayerEditorPanel :layer-id="editingLayerId" @close="editingLayerId = null" />
+        <div v-if="editingNode" class="panel-right-inner">
+          <LayerEditorPanel
+            :layer-id="editingNode.layerId"
+            :editing-node="editingNode"
+            @close="editingNode = null"
+          />
         </div>
         <div v-else class="panel-placeholder">
           <p>点击拓扑图中的节点可在此编辑该层属性</p>

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { LayerId } from '@/types/layers'
-import { getLayerLabel } from '@/registry/layers'
+import { getLayerLabel, getDependencyNodeTypeLabel } from '@/registry/layers'
 import LayerEditorContent from '@/components/LayerEditorContent.vue'
+import type { TopologyNode } from '@/types/layers'
 
 const props = defineProps<{
   layerId: LayerId
+  /** 当前编辑的节点；依赖层必传，用于按 kind 取 schema 与按 nodeId 取 params/config */
+  editingNode?: TopologyNode | null
 }>()
 
 defineEmits<{
@@ -15,7 +18,12 @@ defineEmits<{
 type Section = 'params' | 'config'
 const activeSection = ref<Section>('params')
 
-const layerTitle = computed(() => getLayerLabel(props.layerId))
+const layerTitle = computed(() => {
+  if (props.layerId === 'dependency' && props.editingNode?.dependencyKind) {
+    return `${getLayerLabel(props.layerId)} — ${getDependencyNodeTypeLabel(props.editingNode.dependencyKind)}`
+  }
+  return getLayerLabel(props.layerId)
+})
 </script>
 
 <template>
@@ -43,7 +51,11 @@ const layerTitle = computed(() => getLayerLabel(props.layerId))
       </button>
     </div>
     <div class="panel-body">
-      <LayerEditorContent :layer-id="layerId" :section="activeSection" />
+      <LayerEditorContent
+        :layer-id="layerId"
+        :section="activeSection"
+        :editing-node="editingNode"
+      />
     </div>
   </div>
 </template>

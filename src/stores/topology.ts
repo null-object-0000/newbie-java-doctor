@@ -17,8 +17,6 @@ import type {
   HostLayerConfig,
   RuntimeParams,
   RuntimeConfig,
-  DependencyLayerParams,
-  DependencyLayerConfig,
   Topology,
   TopologyNode,
   TopologyEdge,
@@ -63,12 +61,9 @@ export const useTopologyStore = defineStore('topology', () => {
   const runtimeParams = ref<RuntimeParams>(getDefaultParams('runtime') as RuntimeParams)
   const runtimeConfig = ref<RuntimeConfig>(getDefaultConfig('runtime') as RuntimeConfig)
 
-  const dependencyParams = ref<DependencyLayerParams>(
-    getDefaultParams('dependency') as DependencyLayerParams
-  )
-  const dependencyConfig = ref<DependencyLayerConfig>(
-    getDefaultConfig('dependency') as DependencyLayerConfig
-  )
+  /** 依赖层按节点 id 存储核心参数/配置，每种子类型用各自 schema 的默认值 */
+  const dependencyNodeParams = ref<Record<string, Record<string, unknown>>>({})
+  const dependencyNodeConfig = ref<Record<string, Record<string, unknown>>>({})
 
   const layerLabels = computed(() => getLayerLabels())
 
@@ -119,13 +114,24 @@ export const useTopologyStore = defineStore('topology', () => {
   /** 在指定节点之后插入新节点，或当 afterNodeId 为空时在末尾追加依赖节点；不自动连线 */
   function addNodeAfter(afterNodeId: string | null, opts: AddNodeOptions): TopologyNode | null {
     const effectiveOpts: AddNodeOptions = { ...opts, layerId: 'dependency' }
+    const kind = effectiveOpts.dependencyKind
     const node: TopologyNode = {
       id: nextNodeId(),
       layerId: 'dependency',
       label: computeLabel(effectiveOpts),
       nodeSource: 'user',
-      dependencyKind: effectiveOpts.dependencyKind,
+      dependencyKind: kind,
       customLabel: effectiveOpts.customLabel,
+    }
+    if (kind) {
+      dependencyNodeParams.value = {
+        ...dependencyNodeParams.value,
+        [node.id]: (getDefaultParams('dependency', kind) as Record<string, unknown>) ?? {},
+      }
+      dependencyNodeConfig.value = {
+        ...dependencyNodeConfig.value,
+        [node.id]: (getDefaultConfig('dependency', kind) as Record<string, unknown>) ?? {},
+      }
     }
     const list = topology.value.nodes
     const edges = topology.value.edges
@@ -184,6 +190,14 @@ export const useTopologyStore = defineStore('topology', () => {
       (e) => e.source !== nodeId && e.target !== nodeId
     )
     topology.value = { nodes, edges }
+    if (node.layerId === 'dependency') {
+      const nextParams = { ...dependencyNodeParams.value }
+      const nextConfig = { ...dependencyNodeConfig.value }
+      delete nextParams[nodeId]
+      delete nextConfig[nodeId]
+      dependencyNodeParams.value = nextParams
+      dependencyNodeConfig.value = nextConfig
+    }
     return true
   }
 
@@ -201,9 +215,17 @@ export const useTopologyStore = defineStore('topology', () => {
     runtimeConfig.value = getDefaultConfig('runtime') as RuntimeConfig
   }
 
-  function resetDependency() {
-    dependencyParams.value = getDefaultParams('dependency') as DependencyLayerParams
-    dependencyConfig.value = getDefaultConfig('dependency') as DependencyLayerConfig
+  function resetDependencyNode(nodeId: string) {
+    const node = topology.value.nodes.find((n) => n.id === nodeId)
+    if (!node || node.layerId !== 'dependency' || !node.dependencyKind) return
+    dependencyNodeParams.value = {
+      ...dependencyNodeParams.value,
+      [nodeId]: (getDefaultParams('dependency', node.dependencyKind) as Record<string, unknown>) ?? {},
+    }
+    dependencyNodeConfig.value = {
+      ...dependencyNodeConfig.value,
+      [nodeId]: (getDefaultConfig('dependency', node.dependencyKind) as Record<string, unknown>) ?? {},
+    }
   }
 
   return {
@@ -214,8 +236,8 @@ export const useTopologyStore = defineStore('topology', () => {
     hostConfig,
     runtimeParams,
     runtimeConfig,
-    dependencyParams,
-    dependencyConfig,
+    dependencyNodeParams,
+    dependencyNodeConfig,
     layerLabels,
     addNodeAfter,
     addLayerNode,
@@ -227,7 +249,7 @@ export const useTopologyStore = defineStore('topology', () => {
     resetClient,
     resetHost,
     resetRuntime,
-    resetDependency,
+    resetDependencyNode,
   }
 })
 

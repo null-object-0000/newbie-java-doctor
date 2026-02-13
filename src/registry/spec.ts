@@ -72,10 +72,16 @@ export interface LayerDefinition {
   defaultConfig?: unknown
 }
 
-/** 依赖层下的子节点类型：kind 唯一，label 用于展示 */
+/** 依赖层下的子节点类型：kind 唯一，label 用于展示；各子类型拥有自己的 schema 与拓扑展示 */
 export interface DependencyNodeTypeDefinition {
   kind: string
   label: string
+  /** 该子类型的核心参数 Schema，不继承父级 */
+  paramsSchema?: FormSchema
+  /** 该子类型的核心配置 Schema，不继承父级 */
+  configSchema?: FormSchema
+  /** 该子类型在拓扑图卡片上展示的参数字段 */
+  topologyDisplay?: TopologyDisplayConfig
 }
 
 /** 层在拓扑中的排序与插入顺序：按该数组顺序依次比较 */

@@ -262,7 +262,7 @@ function syncGraph() {
       existing.setPosition(pos.x, pos.y)
       // 仅位置变更时跳过数据更新（避免 HTML 重渲染闪烁）
       if (!positionOnlyRef.value) {
-        existing.setData({ raw: node, displayFields: displayFieldsMap[node.layerId] ?? [] })
+        existing.setData({ raw: node, displayFields: displayFieldsMap[node.id] ?? [] })
       }
     } else {
       // 不存在：添加新节点
@@ -273,7 +273,7 @@ function syncGraph() {
         y: pos.y,
         width: CARD_WIDTH,
         height: CARD_HEIGHT,
-        data: { raw: node, displayFields: displayFieldsMap[node.layerId] ?? [] },
+        data: { raw: node, displayFields: displayFieldsMap[node.id] ?? [] },
         ports: PORTS,
         movable: true,
       })
