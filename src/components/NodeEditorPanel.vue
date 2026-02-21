@@ -3,12 +3,11 @@ import { ref, computed, watch } from 'vue'
 import type { LayerId } from '@/types/layers'
 import { getLayerLabel, getDependencyNodeTypeLabel, getParamsSchema, getConfigSchema } from '@/registry/layers'
 import { NTabs, NTabPane, NButton, NText } from 'naive-ui'
-import LayerEditorContent from '@/components/LayerEditorContent.vue'
+import NodeEditorContent from '@/components/NodeEditorContent.vue'
 import type { TopologyNode } from '@/types/layers'
 
 const props = defineProps<{
   layerId: LayerId
-  /** 当前编辑的节点；依赖层必传，用于按 kind 取 schema 与按 nodeId 取 params/config */
   editingNode?: TopologyNode | null
 }>()
 
@@ -33,7 +32,6 @@ const hasConfigSchema = computed(() =>
   )
 )
 
-/** 无核心参数/配置时隐藏对应 Tab，并默认激活另一个 */
 watch(
   [hasParamsSchema, hasConfigSchema],
   ([params, config]) => {
@@ -44,18 +42,22 @@ watch(
   { immediate: true }
 )
 
-const layerTitle = computed(() => {
+const nodeTitle = computed(() => {
   if (props.layerId === 'dependency' && props.editingNode?.dependencyKind) {
-    return `${getLayerLabel(props.layerId)} — ${getDependencyNodeTypeLabel(props.editingNode.dependencyKind)}`
+    const kindLabel = getDependencyNodeTypeLabel(props.editingNode.dependencyKind)
+    const roleLabel = props.editingNode.dependencyRole === 'server' ? ' — Server'
+      : props.editingNode.dependencyRole === 'client' ? ' — Client'
+      : ''
+    return `${kindLabel}${roleLabel}`
   }
-  return getLayerLabel(props.layerId)
+  return getLayerLabel(props.layerId).replace(/层$/, '')
 })
 </script>
 
 <template>
-  <div class="layer-editor-panel">
+  <div class="node-editor-panel">
     <header class="panel-header">
-      <NText strong class="panel-title">编辑：{{ layerTitle }}</NText>
+      <NText strong class="panel-title">编辑：{{ nodeTitle }}</NText>
       <NButton quaternary circle size="small" @click="$emit('close')">
         <template #icon>×</template>
       </NButton>
@@ -63,7 +65,7 @@ const layerTitle = computed(() => {
     <NTabs v-model:value="activeTab" type="line" size="small" class="panel-tabs">
       <NTabPane v-if="hasParamsSchema || !hasConfigSchema" name="params" tab="核心参数">
         <div class="panel-body">
-          <LayerEditorContent
+          <NodeEditorContent
             :layer-id="layerId"
             section="params"
             :editing-node="editingNode"
@@ -72,7 +74,7 @@ const layerTitle = computed(() => {
       </NTabPane>
       <NTabPane v-if="hasConfigSchema" name="config" tab="核心配置">
         <div class="panel-body">
-          <LayerEditorContent
+          <NodeEditorContent
             :layer-id="layerId"
             section="config"
             :editing-node="editingNode"
@@ -84,7 +86,7 @@ const layerTitle = computed(() => {
 </template>
 
 <style scoped>
-.layer-editor-panel {
+.node-editor-panel {
   display: flex;
   flex-direction: column;
   height: 100%;

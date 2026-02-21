@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { NCard, NFormItem, NInput, NInputNumber, NSelect, NDynamicTags, NButton, NText } from 'naive-ui'
 import type { SelectOption } from 'naive-ui'
-import type { FormSchema, FieldDefinition, SectionScope } from '@/registry/spec'
+import type { FormSchema, FormSection, FieldDefinition, SectionScope } from '@/registry/spec'
 import { getByPath, setByPath } from '@/registry/schemaBuild'
 
 const props = withDefaults(
@@ -12,6 +12,8 @@ const props = withDefaults(
     showReset?: boolean
     /** 在写入 model 前调用（用于撤销栈等） */
     beforeChange?: () => void
+    /** 外部上下文对象，用于 section.visibleWhen 条件判断（如 params 驱动 config 联动） */
+    context?: object
   }>(),
   { showReset: false },
 )
@@ -56,7 +58,15 @@ function tagValues(field: FieldDefinition): string[] {
   return []
 }
 
-const hasSections = computed(() => props.schema.sections.length > 0)
+function isSectionVisible(section: FormSection): boolean {
+  if (!section.visibleWhen) return true
+  const { field, value } = section.visibleWhen
+  const ctx = props.context ?? props.model
+  return getByPath(ctx, field) === value
+}
+
+const visibleSections = computed(() => props.schema.sections.filter(isSectionVisible))
+const hasSections = computed(() => visibleSections.value.length > 0)
 
 const scopeLabels: Record<SectionScope, string> = {
   generic: '通用',
@@ -74,7 +84,7 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
 <template>
   <div v-if="hasSections" class="dynamic-form">
     <NCard
-      v-for="section in schema.sections"
+      v-for="section in visibleSections"
       :key="section.id"
       size="small"
     >

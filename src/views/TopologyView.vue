@@ -1,78 +1,37 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { LayerId } from '@/types/layers'
 import { useTopologyStore } from '@/stores/topology'
 import { storeToRefs } from 'pinia'
 import {
   getTopologyDisplayConfig,
   getTopologyDisplayFieldLabel,
   getTopologyDisplayValueLabel,
-  getGlobalCoreParamsFieldLabel,
-  getGlobalCoreParamsValueLabel,
-  isGlobalCoreParamKey,
   getNodeIoRules,
   getEdgeDisplayConfig,
   getEdgeFieldLabel,
   getEdgeValueLabel,
 } from '@/registry/layers'
 import { getByPath } from '@/registry/schemaBuild'
-import { NButton, NButtonGroup, NCard, NCode, NEmpty, NSelect, NText, useMessage } from 'naive-ui'
+import { NButton, NButtonGroup, NCard, NCode, NEmpty, NText, useMessage } from 'naive-ui'
 import TopologyDiagram from '@/components/TopologyDiagram.vue'
 import NodeListPanel from '@/components/NodeListPanel.vue'
-import LayerEditorPanel from '@/components/LayerEditorPanel.vue'
+import NodeEditorPanel from '@/components/NodeEditorPanel.vue'
 import EdgeEditorPanel from '@/components/EdgeEditorPanel.vue'
-import type { TopologyNode, TopologyEdge, BusinessScenario } from '@/types/layers'
-
-const GLOBAL_BUSINESS_SCENARIO_OPTIONS = [
-  { value: 'io', label: 'IO 密集型' },
-  { value: 'compute', label: '计算密集型' },
-]
+import type { TopologyNode, TopologyEdge } from '@/types/layers'
 
 const message = useMessage()
 const store = useTopologyStore()
 const {
   topology,
-  globalCoreParams,
-  clientParams,
-  accessParams,
-  hostParams,
-  hostConfig,
-  runtimeParams,
-  runtimeConfig,
-  dependencyNodeParams,
-  dependencyNodeConfig,
+  nodeParams,
+  nodeConfig,
   edgeParams,
   canUndo,
   canRedo,
 } = storeToRefs(store)
 
-function onGlobalBusinessScenarioChange(v: string) {
-  store.pushState()
-  globalCoreParams.value = { ...globalCoreParams.value, businessScenario: v as BusinessScenario }
-}
-
-function getLayerParams(layerId: LayerId): object {
-  switch (layerId) {
-    case 'client': return clientParams.value
-    case 'access': return accessParams.value
-    case 'host': return hostParams.value
-    case 'runtime': return runtimeParams.value
-    case 'dependency': return {}
-    default: return {}
-  }
-}
-
-function getLayerConfig(layerId: LayerId): object {
-  switch (layerId) {
-    case 'host': return hostConfig.value
-    case 'runtime': return runtimeConfig.value
-    case 'dependency': return {}
-    default: return {}
-  }
-}
-
-/** 按节点生成拓扑图卡片展示字段（key 为 nodeId，依赖层按节点 kind + dependencyRole 用各自 schema） */
-const layerDisplayFields = computed(() => {
+/** 按节点生成拓扑图卡片展示字段 */
+const nodeDisplayFields = computed(() => {
   const out: Record<string, { label: string; displayText: string }[]> = {}
   for (const node of topology.value.nodes) {
     const layerId = node.layerId
@@ -80,25 +39,13 @@ const layerDisplayFields = computed(() => {
     const role = node.layerId === 'dependency' ? node.dependencyRole : undefined
     const cfg = getTopologyDisplayConfig(layerId, kind, role)
     if (!cfg || (!cfg.params?.length && !cfg.config?.length)) continue
-    const params =
-      layerId === 'dependency' && node.id
-        ? (dependencyNodeParams.value[node.id] ?? {})
-        : getLayerParams(layerId as LayerId)
-    const config =
-      layerId === 'dependency' && node.id
-        ? (dependencyNodeConfig.value[node.id] ?? {})
-        : getLayerConfig(layerId as LayerId)
+    const params = nodeParams.value[node.id] ?? {}
+    const config = nodeConfig.value[node.id] ?? {}
     const rows: { label: string; displayText: string }[] = []
     for (const key of cfg.params ?? []) {
-      const value = isGlobalCoreParamKey(key)
-        ? getByPath(globalCoreParams.value, key)
-        : getByPath(params, key)
-      const label = isGlobalCoreParamKey(key)
-        ? getGlobalCoreParamsFieldLabel(key)
-        : getTopologyDisplayFieldLabel(layerId, 'params', key, kind, role)
-      const displayText = isGlobalCoreParamKey(key)
-        ? getGlobalCoreParamsValueLabel(key, value)
-        : getTopologyDisplayValueLabel(layerId, 'params', key, value, kind, role)
+      const value = getByPath(params, key)
+      const label = getTopologyDisplayFieldLabel(layerId, 'params', key, kind, role)
+      const displayText = getTopologyDisplayValueLabel(layerId, 'params', key, value, kind, role)
       rows.push({ label, displayText })
     }
     for (const key of cfg.config ?? []) {
@@ -139,39 +86,15 @@ const edgeDisplayFields = computed(() => {
 type MiddleViewMode = 'graph' | 'json'
 const middleViewMode = ref<MiddleViewMode>('graph')
 
-/** 根据节点取对应的 params/config（与侧边栏编辑一致） */
 function getNodeParamsConfig(node: TopologyNode): { params: Record<string, unknown>; config: Record<string, unknown> } {
-  const layerId = node.layerId
-  if (layerId === 'dependency' && node.id) {
-    return {
-      params: { ...(dependencyNodeParams.value[node.id] ?? {}) },
-      config: { ...(dependencyNodeConfig.value[node.id] ?? {}) },
-    }
-  }
-  switch (layerId) {
-    case 'client':
-      return { params: { ...clientParams.value } as Record<string, unknown>, config: {} }
-    case 'access':
-      return { params: { ...accessParams.value } as Record<string, unknown>, config: {} }
-    case 'host':
-      return {
-        params: { ...hostParams.value } as Record<string, unknown>,
-        config: { ...hostConfig.value } as Record<string, unknown>,
-      }
-    case 'runtime':
-      return {
-        params: { ...runtimeParams.value } as Record<string, unknown>,
-        config: { ...runtimeConfig.value } as Record<string, unknown>,
-      }
-    default:
-      return { params: {}, config: {} }
+  return {
+    params: { ...(nodeParams.value[node.id] ?? {}) },
+    config: { ...(nodeConfig.value[node.id] ?? {}) },
   }
 }
 
-/** 当前拓扑的 JSON 展示（含全局参数、每个节点的 params/config、每条连线的 params） */
 const topologyJson = computed(() => {
   const payload = {
-    globalCoreParams: { ...globalCoreParams.value } as Record<string, unknown>,
     nodes: topology.value.nodes.map((node) => {
       const { params, config } = getNodeParamsConfig(node)
       return { ...node, params, config }
@@ -265,19 +188,19 @@ function onEdgeRemoved(edgeId: string) {
 }
 
 type DropPayload =
-  | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime' }
-  | { type: 'dependency'; kind: import('@/types/layers').DependencyKind; label: string }
+  | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime'; x: number; y: number }
+  | { type: 'dependency'; kind: import('@/types/layers').DependencyKind; label: string; x: number; y: number }
 
 function onDropFromPalette(payload: DropPayload) {
   if (payload.type === 'layer') {
     if (!canAddLayer(payload.layerId)) return
-    store.addLayerNode(payload.layerId)
+    store.addLayerNode(payload.layerId, payload.x, payload.y)
     return
   }
   store.addNodeAfter(null, {
     layerId: 'dependency',
     dependencyKind: payload.kind,
-  })
+  }, payload.x, payload.y)
 }
 </script>
 
@@ -289,24 +212,16 @@ function onDropFromPalette(payload: DropPayload) {
       </aside>
       <NCard class="topology-main" :segmented="{ content: true }" size="small">
         <template #header>
-          <div class="card-header-row">
-            <NButtonGroup size="small">
-              <NButton :type="middleViewMode === 'graph' ? 'primary' : 'default'"
-                :secondary="middleViewMode === 'graph'" @click="middleViewMode = 'graph'">
-                拓扑图
-              </NButton>
-              <NButton :type="middleViewMode === 'json' ? 'primary' : 'default'" :secondary="middleViewMode === 'json'"
-                @click="middleViewMode = 'json'">
-                JSON
-              </NButton>
-            </NButtonGroup>
-            <div class="global-params-inline">
-              <span class="global-params-label">全局核心参数</span>
-              <NSelect :value="globalCoreParams.businessScenario" :options="GLOBAL_BUSINESS_SCENARIO_OPTIONS"
-                size="small" style="width: 140px"
-                @update:value="onGlobalBusinessScenarioChange" />
-            </div>
-          </div>
+          <NButtonGroup size="small">
+            <NButton :type="middleViewMode === 'graph' ? 'primary' : 'default'"
+              :secondary="middleViewMode === 'graph'" @click="middleViewMode = 'graph'">
+              拓扑图
+            </NButton>
+            <NButton :type="middleViewMode === 'json' ? 'primary' : 'default'" :secondary="middleViewMode === 'json'"
+              @click="middleViewMode = 'json'">
+              JSON
+            </NButton>
+          </NButtonGroup>
         </template>
         <template #header-extra>
           <NButton v-if="middleViewMode === 'json'" size="tiny" secondary @click="copyJson">
@@ -315,7 +230,7 @@ function onDropFromPalette(payload: DropPayload) {
         </template>
         <div class="middle-content">
           <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
-            :layer-display-fields="layerDisplayFields" :edge-display-fields="edgeDisplayFields"
+            :node-display-fields="nodeDisplayFields" :edge-display-fields="edgeDisplayFields"
             :node-port-config="nodePortConfig"
             :visible="middleViewMode === 'graph'" :can-undo="canUndo" :can-redo="canRedo"
             :selected-node-id="selectedNodeId"
@@ -330,7 +245,7 @@ function onDropFromPalette(payload: DropPayload) {
       </NCard>
       <aside class="panel-right">
         <div v-if="editingNode" class="panel-right-inner">
-          <LayerEditorPanel :layer-id="editingNode.layerId" :editing-node="editingNode" @close="editingNode = null" />
+          <NodeEditorPanel :layer-id="editingNode.layerId" :editing-node="editingNode" @close="editingNode = null" />
         </div>
         <div v-else-if="editingEdge" class="panel-right-inner">
           <EdgeEditorPanel :edge="editingEdge" @close="editingEdge = null" />
@@ -413,24 +328,6 @@ function onDropFromPalette(payload: DropPayload) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-.card-header-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.global-params-inline {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.global-params-label {
-  font-size: 12px;
-  color: var(--n-text-color-3);
 }
 
 .panel-placeholder {

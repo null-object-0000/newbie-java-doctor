@@ -28,7 +28,7 @@ const props = withDefaults(
   defineProps<{
     nodes: TopologyNode[]
     edges: TopologyEdge[]
-    layerDisplayFields?: Record<string, { label: string; displayText: string }[]>
+    nodeDisplayFields?: Record<string, { label: string; displayText: string }[]>
     /** 连线上展示的字段（key 为 edgeId） */
     edgeDisplayFields?: Record<string, { label: string; displayText: string }[]>
     /** 各节点是否有输入/输出端口（不传则默认都有） */
@@ -41,7 +41,7 @@ const props = withDefaults(
     selectedNodeId?: string | null
   }>(),
   {
-    layerDisplayFields: () => ({}),
+    nodeDisplayFields: () => ({}),
     edgeDisplayFields: () => ({}),
     nodePortConfig: () => ({}),
     visible: true,
@@ -59,8 +59,8 @@ const emit = defineEmits<{
   edgeSelect: [edge: TopologyEdge | null]
   drop: [
     payload:
-      | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime' }
-      | { type: 'dependency'; kind: DependencyKind; label: string },
+      | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime'; x: number; y: number }
+      | { type: 'dependency'; kind: DependencyKind; label: string; x: number; y: number },
   ]
   nodeMoved: [payload: { nodeId: string; x: number; y: number }]
   edgeVerticesChanged: [payload: { edgeId: string; vertices: { x: number; y: number }[] }]
@@ -548,7 +548,7 @@ function doSyncGraph() {
 
   const dataNodes = props.nodes
   const dataEdges = props.edges
-  const displayFieldsMap = props.layerDisplayFields ?? {}
+  const displayFieldsMap = props.nodeDisplayFields ?? {}
   const edgeDisplayMap = props.edgeDisplayFields ?? {}
 
   // --- Sync Nodes ---
@@ -764,7 +764,6 @@ function doSyncGraph() {
   })
 
   positionOnlyRef.value = false
-  if (addedNew) graph.centerContent()
 
   // 若当前有选中的连线，确保其显示删除按钮（sync 可能重建边）
   if (selectedEdgeId.value) {
@@ -821,15 +820,24 @@ function onDrop(e: DragEvent) {
     const payload = JSON.parse(raw) as
       | { type: 'layer'; layerId: 'client' | 'access' | 'host' | 'runtime' }
       | { type: 'dependency'; kind: DependencyKind; label: string }
+
+    let x = PADDING
+    let y = PADDING
+    if (graph) {
+      const local = graph.clientToLocal({ x: e.clientX, y: e.clientY })
+      x = local.x - CARD_WIDTH / 2
+      y = local.y - CARD_HEIGHT / 2
+    }
+
     if (payload.type === 'layer' && payload.layerId) {
       if (props.nodes.some((n) => n.layerId === payload.layerId)) return
-      emit('drop', { type: 'layer', layerId: payload.layerId })
+      emit('drop', { type: 'layer', layerId: payload.layerId, x, y })
     } else if (
       payload.type === 'dependency' &&
       payload.kind != null &&
       payload.label != null
     ) {
-      emit('drop', { type: 'dependency', kind: payload.kind, label: payload.label })
+      emit('drop', { type: 'dependency', kind: payload.kind, label: payload.label, x, y })
     }
   } catch {
     // ignore
@@ -1207,7 +1215,7 @@ onUnmounted(() => {
 
 // ========== Watchers ==========
 watch(
-  () => [props.nodes, props.edges, props.layerDisplayFields, props.edgeDisplayFields, props.nodePortConfig],
+  () => [props.nodes, props.edges, props.nodeDisplayFields, props.edgeDisplayFields, props.nodePortConfig],
   () => syncGraph(),
   { deep: true },
 )

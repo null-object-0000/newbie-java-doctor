@@ -26,6 +26,14 @@ export interface FieldDefinition {
 /** 依赖层专用：区块归属「通用」或某类依赖（如 redis / database），用于分组、筛选或展示说明 */
 export type SectionScope = 'generic' | 'redis' | 'database'
 
+/** 区块条件显示：当 context 中指定字段等于指定值时才渲染该区块 */
+export interface SectionVisibleWhen {
+  /** 字段 dot-path（在外部 context 对象中查找，如 params 中的 clientType） */
+  field: string
+  /** 匹配值：字段值等于此值时显示 */
+  value: unknown
+}
+
 /** 表单区块（卡片标题 + 字段列表） */
 export interface FormSection {
   id: string
@@ -33,6 +41,8 @@ export interface FormSection {
   description?: string
   /** 依赖层专用：不填视为通用；redis / database 表示该区块仅对应此类依赖 */
   sectionScope?: SectionScope
+  /** 条件显示：不填则始终显示；填写后仅当 context 中对应字段匹配时渲染 */
+  visibleWhen?: SectionVisibleWhen
   fields: FieldDefinition[]
 }
 

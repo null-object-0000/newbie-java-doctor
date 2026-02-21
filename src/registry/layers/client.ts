@@ -9,8 +9,17 @@ const paramsSchema: FormSchema = {
     {
       id: 'main',
       label: '核心参数',
-      description: '需使用者提供（业务场景为全局核心参数，在未选节点时于右侧编辑）',
       fields: [
+        {
+          key: 'businessScenario',
+          label: '业务场景',
+          type: 'select',
+          default: 'io',
+          options: [
+            { value: 'io', label: 'IO 密集型' },
+            { value: 'compute', label: '计算密集型' },
+          ],
+        },
         { key: 'concurrentUsers', label: '并发用户数', type: 'number', default: 100, min: 1 },
         { key: 'targetThroughputRps', label: '目标吞吐量 (RPS)', type: 'number', default: 500, min: 1 },
         {
@@ -40,6 +49,6 @@ export const clientLayer: LayerDefinition = {
   },
   paramsSchema,
   topologyDisplay: {
-    params: ['businessScenario', 'concurrentUsers', 'targetThroughputRps'], // businessScenario 从全局核心参数取值展示
+    params: ['businessScenario', 'concurrentUsers', 'targetThroughputRps'],
   },
 }

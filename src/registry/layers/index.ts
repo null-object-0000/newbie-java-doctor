@@ -19,13 +19,6 @@ import type {
   NodeIoRules,
 } from '../spec'
 import { buildFromSchema } from '../schemaBuild'
-import {
-  getGlobalCoreParamsSchema as getGlobalCoreParamsSchemaImpl,
-  getDefaultGlobalCoreParams as getDefaultGlobalCoreParamsImpl,
-  getGlobalCoreParamsFieldLabel as getGlobalCoreParamsFieldLabelImpl,
-  getGlobalCoreParamsValueLabel as getGlobalCoreParamsValueLabelImpl,
-  isGlobalCoreParamKey,
-} from '../globalCoreParams'
 import { clientLayer } from './client'
 import { accessLayer } from './access'
 import { hostLayer } from './host'
@@ -478,9 +471,3 @@ export function getTopologyDisplayValueLabel(
   return String(value)
 }
 
-// ---------- 全局核心参数 API（再导出） ----------
-export const getGlobalCoreParamsSchema = getGlobalCoreParamsSchemaImpl
-export const getDefaultGlobalCoreParams = getDefaultGlobalCoreParamsImpl
-export const getGlobalCoreParamsFieldLabel = getGlobalCoreParamsFieldLabelImpl
-export const getGlobalCoreParamsValueLabel = getGlobalCoreParamsValueLabelImpl
-export { isGlobalCoreParamKey }

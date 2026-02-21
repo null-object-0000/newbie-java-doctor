@@ -8,41 +8,26 @@ import {
   getDependencyClientServer,
   getDefaultParams,
   getDefaultConfig,
-  getDefaultGlobalCoreParams,
   validateEdge,
   getEdgeDefaultParams,
   getEdgeParamsSchema,
 } from '@/registry/layers'
 import type {
-  GlobalCoreParams,
-  ClientLayerParams,
-  AccessLayerParams,
-  HostLayerParams,
-  HostLayerConfig,
-  RuntimeParams,
-  RuntimeConfig,
   Topology,
   TopologyNode,
   TopologyEdge,
   AddNodeOptions,
-  LayerId,
-  DependencyKind,
   DependencyRole,
 } from '@/types/layers'
 
-/** 完整拓扑状态（与导出的 JSON 一致，用于撤销/重做） */
+/** 完整拓扑状态（用于撤销/重做与 JSON 导出） */
 export interface TopologyFullState {
-  globalCoreParams: GlobalCoreParams
   topology: Topology
-  clientParams: ClientLayerParams
-  accessParams: AccessLayerParams
-  hostParams: HostLayerParams
-  hostConfig: HostLayerConfig
-  runtimeParams: RuntimeParams
-  runtimeConfig: RuntimeConfig
-  dependencyNodeParams: Record<string, Record<string, unknown>>
-  dependencyNodeConfig: Record<string, Record<string, unknown>>
-  /** 连线参数：按 edgeId 存储（如网络环境等链路属性） */
+  /** 所有节点的核心参数，按 nodeId 索引 */
+  nodeParams: Record<string, Record<string, unknown>>
+  /** 所有节点的核心配置，按 nodeId 索引 */
+  nodeConfig: Record<string, Record<string, unknown>>
+  /** 连线参数，按 edgeId 索引 */
   edgeParams: Record<string, Record<string, unknown>>
 }
 
@@ -50,14 +35,12 @@ function deepClone<T>(x: T): T {
   return JSON.parse(JSON.stringify(x))
 }
 
-/** 默认拓扑：客户端层 -> 宿主容器层 -> 运行时层（固定 ID，便于识别与初始化边参数） */
 const DEFAULT_NODE_IDS = {
   client: 'n-client-default',
   host: 'n-host-default',
   runtime: 'n-runtime-default',
 } as const
 
-/** 默认节点水平偏移；三层垂直间距（比参考略大） */
 const DEFAULT_LAYOUT = { x: 0, clientY: 0, hostY: 250, runtimeY: 500 }
 
 function buildDefaultTopology(): Topology {
@@ -66,30 +49,9 @@ function buildDefaultTopology(): Topology {
   const runtimeId = DEFAULT_NODE_IDS.runtime
   const { x, clientY, hostY, runtimeY } = DEFAULT_LAYOUT
   const nodes: TopologyNode[] = [
-    {
-      id: clientId,
-      layerId: 'client',
-      label: getLayerLabel('client'),
-      nodeSource: 'default',
-      x,
-      y: clientY,
-    },
-    {
-      id: hostId,
-      layerId: 'host',
-      label: getLayerLabel('host'),
-      nodeSource: 'default',
-      x,
-      y: hostY,
-    },
-    {
-      id: runtimeId,
-      layerId: 'runtime',
-      label: getLayerLabel('runtime'),
-      nodeSource: 'default',
-      x,
-      y: runtimeY,
-    },
+    { id: clientId, layerId: 'client', label: getLayerLabel('client'), nodeSource: 'default', x, y: clientY },
+    { id: hostId, layerId: 'host', label: getLayerLabel('host'), nodeSource: 'default', x, y: hostY },
+    { id: runtimeId, layerId: 'runtime', label: getLayerLabel('runtime'), nodeSource: 'default', x, y: runtimeY },
   ]
   const edges: TopologyEdge[] = [
     { id: nextEdgeId(clientId, hostId), source: clientId, target: hostId },
@@ -98,7 +60,21 @@ function buildDefaultTopology(): Topology {
   return { nodes, edges }
 }
 
-/** 为默认拓扑的边生成初始连线参数（如 client->host 的网络环境等） */
+function buildDefaultNodeParams(): Record<string, Record<string, unknown>> {
+  return {
+    [DEFAULT_NODE_IDS.client]: (getDefaultParams('client') as Record<string, unknown>) ?? {},
+    [DEFAULT_NODE_IDS.host]: (getDefaultParams('host') as Record<string, unknown>) ?? {},
+    [DEFAULT_NODE_IDS.runtime]: (getDefaultParams('runtime') as Record<string, unknown>) ?? {},
+  }
+}
+
+function buildDefaultNodeConfig(): Record<string, Record<string, unknown>> {
+  return {
+    [DEFAULT_NODE_IDS.host]: (getDefaultConfig('host') as Record<string, unknown>) ?? {},
+    [DEFAULT_NODE_IDS.runtime]: (getDefaultConfig('runtime') as Record<string, unknown>) ?? {},
+  }
+}
+
 function getDefaultTopologyEdgeParams(topology: Topology): Record<string, Record<string, unknown>> {
   const result: Record<string, Record<string, unknown>> = {}
   for (const e of topology.edges) {
@@ -131,66 +107,58 @@ function computeLabel(opts: AddNodeOptions, role?: DependencyRole): string {
   return getLayerLabel(opts.layerId)
 }
 
+/** 根据节点信息获取该节点的默认 params */
+function getNodeDefaultParams(node: TopologyNode): Record<string, unknown> {
+  if (node.layerId === 'dependency' && node.dependencyKind) {
+    return (getDefaultParams('dependency', node.dependencyKind, node.dependencyRole) as Record<string, unknown>) ?? {}
+  }
+  return (getDefaultParams(node.layerId) as Record<string, unknown>) ?? {}
+}
+
+/** 根据节点信息获取该节点的默认 config */
+function getNodeDefaultConfig(node: TopologyNode): Record<string, unknown> {
+  if (node.layerId === 'dependency' && node.dependencyKind) {
+    return (getDefaultConfig('dependency', node.dependencyKind, node.dependencyRole) as Record<string, unknown>) ?? {}
+  }
+  return (getDefaultConfig(node.layerId) as Record<string, unknown>) ?? {}
+}
+
 export const useTopologyStore = defineStore('topology', () => {
   const defaultTopology = buildDefaultTopology()
   const topology = ref<Topology>(defaultTopology)
 
-  const globalCoreParams = ref<GlobalCoreParams>(getDefaultGlobalCoreParams())
-  const clientParams = ref<ClientLayerParams>(getDefaultParams('client') as ClientLayerParams)
-  const accessParams = ref<AccessLayerParams>(getDefaultParams('access') as AccessLayerParams)
+  /** 所有节点的核心参数，按 nodeId 索引 */
+  const nodeParams = ref<Record<string, Record<string, unknown>>>(buildDefaultNodeParams())
+  /** 所有节点的核心配置，按 nodeId 索引 */
+  const nodeConfig = ref<Record<string, Record<string, unknown>>>(buildDefaultNodeConfig())
 
-  const hostParams = ref<HostLayerParams>(getDefaultParams('host') as HostLayerParams)
-  const hostConfig = ref<HostLayerConfig>(getDefaultConfig('host') as HostLayerConfig)
-
-  const runtimeParams = ref<RuntimeParams>(getDefaultParams('runtime') as RuntimeParams)
-  const runtimeConfig = ref<RuntimeConfig>(getDefaultConfig('runtime') as RuntimeConfig)
-
-  /** 依赖层按节点 id 存储核心参数/配置，每种子类型用各自 schema 的默认值 */
-  const dependencyNodeParams = ref<Record<string, Record<string, unknown>>>({})
-  const dependencyNodeConfig = ref<Record<string, Record<string, unknown>>>({})
-
-  /** 连线参数：按 edgeId 存储（如网络环境等链路属性）；默认拓扑的边会预填默认值 */
+  /** 连线参数，按 edgeId 索引 */
   const edgeParams = ref<Record<string, Record<string, unknown>>>(
     getDefaultTopologyEdgeParams(defaultTopology),
   )
 
-  /** 撤销/重做：针对完整 JSON 状态（拓扑 + 所有节点 params/config） */
+  // ========== 撤销/重做 ==========
   const historyPast = ref<TopologyFullState[]>([])
   const historyFuture = ref<TopologyFullState[]>([])
   const HISTORY_MAX = 50
 
   function getFullState(): TopologyFullState {
     return {
-      globalCoreParams: globalCoreParams.value,
       topology: topology.value,
-      clientParams: clientParams.value,
-      accessParams: accessParams.value,
-      hostParams: hostParams.value,
-      hostConfig: hostConfig.value,
-      runtimeParams: runtimeParams.value,
-      runtimeConfig: runtimeConfig.value,
-      dependencyNodeParams: dependencyNodeParams.value,
-      dependencyNodeConfig: dependencyNodeConfig.value,
+      nodeParams: nodeParams.value,
+      nodeConfig: nodeConfig.value,
       edgeParams: edgeParams.value,
     }
   }
 
   function setFullState(s: TopologyFullState): void {
     const c = deepClone(s)
-    globalCoreParams.value = c.globalCoreParams
     topology.value = c.topology
-    clientParams.value = c.clientParams
-    accessParams.value = c.accessParams
-    hostParams.value = c.hostParams
-    hostConfig.value = c.hostConfig
-    runtimeParams.value = c.runtimeParams
-    runtimeConfig.value = c.runtimeConfig
-    dependencyNodeParams.value = c.dependencyNodeParams
-    dependencyNodeConfig.value = c.dependencyNodeConfig
+    nodeParams.value = c.nodeParams ?? {}
+    nodeConfig.value = c.nodeConfig ?? {}
     edgeParams.value = c.edgeParams ?? {}
   }
 
-  /** 在发生变更前调用，将当前状态压入历史（并清空 redo 栈） */
   function pushState(): void {
     const snapshot = deepClone(getFullState())
     historyPast.value = [...historyPast.value.slice(-(HISTORY_MAX - 1)), snapshot]
@@ -216,10 +184,11 @@ export const useTopologyStore = defineStore('topology', () => {
   const canUndo = computed(() => historyPast.value.length > 0)
   const canRedo = computed(() => historyFuture.value.length > 0)
 
-  /** 用户从端口拖拽创建的新连线（由用户自行操作）；不符合节点输入输出规则时返回 { ok: false, message } */
+  // ========== 连线操作 ==========
+
   function addEdge(
     sourceId: string,
-    targetId: string
+    targetId: string,
   ): { ok: true; edge: TopologyEdge } | { ok: false; message: string } {
     const nodeIds = new Set(topology.value.nodes.map((n) => n.id))
     if (!nodeIds.has(sourceId) || !nodeIds.has(targetId)) {
@@ -247,7 +216,6 @@ export const useTopologyStore = defineStore('topology', () => {
       ...topology.value,
       edges: [...topology.value.edges, edge],
     }
-    // 自动填充连线默认参数（如有 Schema）
     const defaultEdge = getEdgeDefaultParams(sourceNode.layerId, targetNode.layerId)
     if (Object.keys(defaultEdge).length > 0) {
       edgeParams.value = { ...edgeParams.value, [id]: defaultEdge }
@@ -255,7 +223,6 @@ export const useTopologyStore = defineStore('topology', () => {
     return { ok: true, edge }
   }
 
-  /** 删除指定连线（如通过边上删除按钮） */
   function removeEdge(edgeId: string): void {
     const edge = topology.value.edges.find((e) => e.id === edgeId)
     if (!edge) return
@@ -264,7 +231,6 @@ export const useTopologyStore = defineStore('topology', () => {
       ...topology.value,
       edges: topology.value.edges.filter((e) => e.id !== edgeId),
     }
-    // 清理连线参数
     if (edgeParams.value[edgeId]) {
       const next = { ...edgeParams.value }
       delete next[edgeId]
@@ -272,17 +238,18 @@ export const useTopologyStore = defineStore('topology', () => {
     }
   }
 
-  /** 更新连线顶点（用户拖拽连线路径后持久化） */
   function updateEdgeVertices(edgeId: string, vertices: { x: number; y: number }[]): void {
     pushState()
     const edges = topology.value.edges.map((e) =>
-      e.id === edgeId ? { ...e, vertices: vertices.length > 0 ? vertices : undefined } : e
+      e.id === edgeId ? { ...e, vertices: vertices.length > 0 ? vertices : undefined } : e,
     )
     topology.value = { ...topology.value, edges }
   }
 
-  /** 在指定节点之后插入新节点，或当 afterNodeId 为空时在末尾追加依赖节点；client_and_server 时一次创建 Server+Client 两节点并关联，不自动连线 */
-  function addNodeAfter(afterNodeId: string | null, opts: AddNodeOptions): TopologyNode | null {
+  // ========== 节点操作 ==========
+
+  /** 在指定节点之后插入依赖节点；client_and_server 时一次创建 Server+Client 两节点并关联 */
+  function addNodeAfter(afterNodeId: string | null, opts: AddNodeOptions, dropX?: number, dropY?: number): TopologyNode | null {
     const effectiveOpts: AddNodeOptions = { ...opts, layerId: 'dependency' }
     const kind = effectiveOpts.dependencyKind
     if (!kind) return null
@@ -311,14 +278,16 @@ export const useTopologyStore = defineStore('topology', () => {
         dependencyKind: kind,
         dependencyRole: 'client',
         dependencyGroupId: groupId,
+        x: dropX,
+        y: dropY,
       }
-      dependencyNodeParams.value = {
-        ...dependencyNodeParams.value,
+      nodeParams.value = {
+        ...nodeParams.value,
         [serverNode.id]: (getDefaultParams('dependency', kind, 'server') as Record<string, unknown>) ?? {},
         [clientNode.id]: (getDefaultParams('dependency', kind, 'client') as Record<string, unknown>) ?? {},
       }
-      dependencyNodeConfig.value = {
-        ...dependencyNodeConfig.value,
+      nodeConfig.value = {
+        ...nodeConfig.value,
         [serverNode.id]: (getDefaultConfig('dependency', kind, 'server') as Record<string, unknown>) ?? {},
         [clientNode.id]: (getDefaultConfig('dependency', kind, 'client') as Record<string, unknown>) ?? {},
       }
@@ -336,13 +305,15 @@ export const useTopologyStore = defineStore('topology', () => {
         label: computeLabel(effectiveOpts),
         nodeSource: 'user',
         dependencyKind: kind,
+        x: dropX,
+        y: dropY,
       }
-      dependencyNodeParams.value = {
-        ...dependencyNodeParams.value,
+      nodeParams.value = {
+        ...nodeParams.value,
         [node.id]: (getDefaultParams('dependency', kind) as Record<string, unknown>) ?? {},
       }
-      dependencyNodeConfig.value = {
-        ...dependencyNodeConfig.value,
+      nodeConfig.value = {
+        ...nodeConfig.value,
         [node.id]: (getDefaultConfig('dependency', kind) as Record<string, unknown>) ?? {},
       }
       toInsert.push(node)
@@ -362,7 +333,7 @@ export const useTopologyStore = defineStore('topology', () => {
   }
 
   /** 将「层」节点插入拓扑（不自动连线）；若该层已达上限则返回 null */
-  function addLayerNode(layerId: 'client' | 'access' | 'host' | 'runtime'): TopologyNode | null {
+  function addLayerNode(layerId: 'client' | 'access' | 'host' | 'runtime', dropX?: number, dropY?: number): TopologyNode | null {
     const LAYER_ORDER = getLayerOrder()
     const max = getLayerMaxCount(layerId)
     const current = topology.value.nodes.filter((n) => n.layerId === layerId).length
@@ -380,18 +351,28 @@ export const useTopologyStore = defineStore('topology', () => {
       layerId,
       label: getLayerLabel(layerId),
       nodeSource: 'user',
+      x: dropX,
+      y: dropY,
     }
     const nodes = [...list]
     nodes.splice(insertAt, 0, node)
     topology.value = { nodes, edges: topology.value.edges }
+
+    const defaultP = (getDefaultParams(layerId) as Record<string, unknown>) ?? {}
+    if (Object.keys(defaultP).length > 0) {
+      nodeParams.value = { ...nodeParams.value, [node.id]: defaultP }
+    }
+    const defaultC = (getDefaultConfig(layerId) as Record<string, unknown>) ?? {}
+    if (Object.keys(defaultC).length > 0) {
+      nodeConfig.value = { ...nodeConfig.value, [node.id]: defaultC }
+    }
+
     return node
   }
 
-  /** 依赖层同组节点在拓扑图中的卡片宽度与水平间距（与 TopologyDiagram 的 CARD_WIDTH、GROUP_CLIENT_SERVER_GAP 一致，用于拖动联动） */
   const DEPENDENCY_GROUP_CARD_WIDTH = 260
   const DEPENDENCY_GROUP_HORIZONTAL_GAP = 72
 
-  /** 更新节点位置（手动拖动后持久化）；若为 client_and_server 组内节点则联动更新另一节点位置 */
   function updateNodePosition(nodeId: string, x: number, y: number): void {
     pushState()
     const node = topology.value.nodes.find((n) => n.id === nodeId)
@@ -409,7 +390,6 @@ export const useTopologyStore = defineStore('topology', () => {
     topology.value = { ...topology.value, nodes }
   }
 
-  /** 删除用户添加的节点，并移除以该节点为端点的连线。Server 节点不可单独删除（随 Client）；删 Client 时同组 Server 一并删除。 */
   function removeNode(nodeId: string): boolean {
     const node = topology.value.nodes.find((n) => n.id === nodeId)
     if (!node || node.nodeSource !== 'user') return false
@@ -434,48 +414,40 @@ export const useTopologyStore = defineStore('topology', () => {
       (e) => !toRemove.has(e.source) && !toRemove.has(e.target),
     )
     topology.value = { nodes, edges }
-    // 清理被删除连线的参数
+
     if (removedEdgeIds.size > 0) {
       const nextEdge = { ...edgeParams.value }
       removedEdgeIds.forEach((id) => delete nextEdge[id])
       edgeParams.value = nextEdge
     }
-    if (node.layerId === 'dependency' || toRemove.size > 1) {
-      const nextParams = { ...dependencyNodeParams.value }
-      const nextConfig = { ...dependencyNodeConfig.value }
-      toRemove.forEach((id) => {
-        delete nextParams[id]
-        delete nextConfig[id]
-      })
-      dependencyNodeParams.value = nextParams
-      dependencyNodeConfig.value = nextConfig
-    }
+    const nextParams = { ...nodeParams.value }
+    const nextConfig = { ...nodeConfig.value }
+    toRemove.forEach((id) => {
+      delete nextParams[id]
+      delete nextConfig[id]
+    })
+    nodeParams.value = nextParams
+    nodeConfig.value = nextConfig
     return true
   }
 
-  function resetGlobalCoreParams() {
+  // ========== 重置 ==========
+
+  /** 统一的节点重置：根据节点的 layerId / dependencyKind / dependencyRole 恢复默认值 */
+  function resetNode(nodeId: string) {
+    const node = topology.value.nodes.find((n) => n.id === nodeId)
+    if (!node) return
     pushState()
-    globalCoreParams.value = getDefaultGlobalCoreParams()
+    nodeParams.value = {
+      ...nodeParams.value,
+      [nodeId]: getNodeDefaultParams(node),
+    }
+    nodeConfig.value = {
+      ...nodeConfig.value,
+      [nodeId]: getNodeDefaultConfig(node),
+    }
   }
 
-  function resetClient() {
-    pushState()
-    clientParams.value = getDefaultParams('client') as ClientLayerParams
-  }
-
-  function resetHost() {
-    pushState()
-    hostParams.value = getDefaultParams('host') as HostLayerParams
-    hostConfig.value = getDefaultConfig('host') as HostLayerConfig
-  }
-
-  function resetRuntime() {
-    pushState()
-    runtimeParams.value = getDefaultParams('runtime') as RuntimeParams
-    runtimeConfig.value = getDefaultConfig('runtime') as RuntimeConfig
-  }
-
-  /** 重置连线参数为默认值 */
   function resetEdgeParams(edgeId: string) {
     const edge = topology.value.edges.find((e) => e.id === edgeId)
     if (!edge) return
@@ -491,32 +463,10 @@ export const useTopologyStore = defineStore('topology', () => {
     }
   }
 
-  function resetDependencyNode(nodeId: string) {
-    const node = topology.value.nodes.find((n) => n.id === nodeId)
-    if (!node || node.layerId !== 'dependency' || !node.dependencyKind) return
-    pushState()
-    const role = node.dependencyRole
-    dependencyNodeParams.value = {
-      ...dependencyNodeParams.value,
-      [nodeId]: (getDefaultParams('dependency', node.dependencyKind, role) as Record<string, unknown>) ?? {},
-    }
-    dependencyNodeConfig.value = {
-      ...dependencyNodeConfig.value,
-      [nodeId]: (getDefaultConfig('dependency', node.dependencyKind, role) as Record<string, unknown>) ?? {},
-    }
-  }
-
   return {
     topology,
-    globalCoreParams,
-    clientParams,
-    accessParams,
-    hostParams,
-    hostConfig,
-    runtimeParams,
-    runtimeConfig,
-    dependencyNodeParams,
-    dependencyNodeConfig,
+    nodeParams,
+    nodeConfig,
     edgeParams,
     canUndo,
     canRedo,
@@ -530,11 +480,7 @@ export const useTopologyStore = defineStore('topology', () => {
     updateNodePosition,
     updateEdgeVertices,
     removeNode,
-    resetGlobalCoreParams,
-    resetClient,
-    resetHost,
-    resetRuntime,
-    resetDependencyNode,
+    resetNode,
     resetEdgeParams,
   }
 })

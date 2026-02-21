@@ -4,12 +4,6 @@
  * 核心配置：可调优、可基于核心参数自动计算推荐
  */
 
-// ========== Global 全局核心参数 ==========
-export type BusinessScenario = 'io' | 'compute'  // IO 密集型 | 计算密集型
-export interface GlobalCoreParams {
-  businessScenario: BusinessScenario
-}
-
 // ========== Client Layer 客户端层 ==========
 /** 网络环境（已迁移至连线参数，保留类型供连线使用） */
 export type NetworkEnv = 'public' | 'intra_dc' | 'cross_dc'  // 公网 | 内网同中心 | 内网跨中心

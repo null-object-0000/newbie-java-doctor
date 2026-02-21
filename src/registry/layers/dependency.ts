@@ -81,24 +81,13 @@ const databaseChild: DependencyNodeTypeDefinition = {
   },
 }
 
-// ---------- 三方接口子类型 ----------
-const httpApiParamsSchema: FormSchema = {
+// ---------- 三方接口子类型（client_and_server：Server 与 Client 配置分开） ----------
+const httpApiServerParamsSchema: FormSchema = {
   sections: [
     {
-      id: 'http_api_params',
-      label: '核心参数 — 三方接口',
+      id: 'http_api_server_params',
+      label: '核心参数 — 三方接口 Server',
       fields: [
-        {
-          key: 'clientType',
-          label: 'HTTP 客户端',
-          type: 'select',
-          default: 'okhttp',
-          options: [
-            { value: 'java_http', label: 'Java HttpClient' },
-            { value: 'okhttp', label: 'OkHttp' },
-            { value: 'apache', label: 'Apache HttpClient' },
-          ],
-        },
         {
           key: 'networkEnv',
           label: '网络环境',
@@ -118,13 +107,73 @@ const httpApiParamsSchema: FormSchema = {
   ],
 }
 
-const httpApiConfigSchema: FormSchema = {
+const httpApiClientParamsSchema: FormSchema = {
   sections: [
     {
-      id: 'http_api_config',
-      label: '核心配置 — HTTP 客户端',
+      id: 'http_api_client_params',
+      label: '核心参数 — HTTP Client',
       fields: [
-        { key: 'timeoutMs', label: '超时 (ms)', type: 'number', default: 5000, min: 0 },
+        {
+          key: 'clientType',
+          label: 'HTTP 客户端',
+          type: 'select',
+          default: 'okhttp',
+          options: [
+            { value: 'java_http', label: 'Java HttpClient' },
+            { value: 'okhttp', label: 'OkHttp' },
+            { value: 'apache', label: 'Apache HttpClient' },
+          ],
+        },
+      ],
+    },
+  ],
+}
+
+const httpApiClientConfigSchema: FormSchema = {
+  sections: [
+    {
+      id: 'http_api_client_config_java_http',
+      label: '核心配置 — Java HttpClient',
+      visibleWhen: { field: 'clientType', value: 'java_http' },
+      fields: [
+        {
+          key: 'javaHttp.version',
+          label: 'Version',
+          type: 'select',
+          default: 'HTTP_2',
+          options: [
+            { value: 'HTTP_1_1', label: 'HTTP/1.1' },
+            { value: 'HTTP_2', label: 'HTTP/2' },
+          ],
+        },
+        { key: 'javaHttp.executor', label: 'Executor', type: 'string', default: '', placeholder: 'e.g. virtual / fixedThreadPool(10)' },
+        { key: 'javaHttp.timeoutMs', label: 'Timeout (ms)', type: 'number', default: 5000, min: 0 },
+      ],
+    },
+    {
+      id: 'http_api_client_config_okhttp',
+      label: '核心配置 — OkHttp',
+      visibleWhen: { field: 'clientType', value: 'okhttp' },
+      fields: [
+        { key: 'okhttp.maxRequestsPerHost', label: 'Dispatcher.MaxRequestsPerHost', type: 'number', default: 5, min: 1 },
+        { key: 'okhttp.maxRequests', label: 'Dispatcher.MaxRequests', type: 'number', default: 64, min: 1 },
+        { key: 'okhttp.maxIdleConnections', label: 'ConnectionPool.MaxIdleConnections', type: 'number', default: 5, min: 0 },
+        { key: 'okhttp.keepAliveDurationMs', label: 'ConnectionPool.KeepAliveDuration (ms)', type: 'number', default: 300000, min: 0 },
+        { key: 'okhttp.connectTimeoutMs', label: 'connectTimeout (ms)', type: 'number', default: 10000, min: 0 },
+        { key: 'okhttp.readTimeoutMs', label: 'readTimeout (ms)', type: 'number', default: 10000, min: 0 },
+        { key: 'okhttp.writeTimeoutMs', label: 'writeTimeout (ms)', type: 'number', default: 10000, min: 0 },
+      ],
+    },
+    {
+      id: 'http_api_client_config_apache',
+      label: '核心配置 — Apache HttpClient',
+      visibleWhen: { field: 'clientType', value: 'apache' },
+      fields: [
+        { key: 'apache.maxConnTotal', label: 'MaxConnTotal', type: 'number', default: 25, min: 1 },
+        { key: 'apache.maxConnPerRoute', label: 'MaxConnPerRoute', type: 'number', default: 5, min: 1 },
+        { key: 'apache.timeToLiveMs', label: 'ConnectionConfig.TimeToLive (ms)', type: 'number', default: -1 },
+        { key: 'apache.connectionRequestTimeoutMs', label: 'connectionRequestTimeout (ms)', type: 'number', default: 180000, min: 0 },
+        { key: 'apache.responseTimeoutMs', label: 'responseTimeout (ms)', type: 'number', default: 0, min: 0 },
       ],
     },
   ],
@@ -133,13 +182,12 @@ const httpApiConfigSchema: FormSchema = {
 const httpApiChild: DependencyNodeTypeDefinition = {
   kind: 'http_api',
   label: '三方接口',
-  clientServer: 'client_only',
-  paramsSchema: httpApiParamsSchema,
-  configSchema: httpApiConfigSchema,
-  topologyDisplay: {
-    params: ['clientType', 'networkEnv', 'targetQps', 'slaRtMs'],
-    config: ['timeoutMs'],
-  },
+  clientServer: 'client_and_server',
+  serverParamsSchema: httpApiServerParamsSchema,
+  clientParamsSchema: httpApiClientParamsSchema,
+  clientConfigSchema: httpApiClientConfigSchema,
+  serverTopologyDisplay: { params: ['networkEnv', 'targetQps', 'slaRtMs'] },
+  clientTopologyDisplay: { params: ['clientType'] },
 }
 
 export const dependencyLayer: LayerDefinition = {
