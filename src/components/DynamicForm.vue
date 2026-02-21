@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { NCard, NFormItem, NInput, NInputNumber, NSelect, NDynamicTags, NButton, NText } from 'naive-ui'
 import type { SelectOption } from 'naive-ui'
-import type { FormSchema, FormSection, FieldDefinition, SectionScope } from '@/registry/spec'
+import type { FormSchema, FormSection, FieldDefinition, SectionScope, ValidationContext } from '@/registry/spec'
 import { getByPath, setByPath } from '@/registry/schemaBuild'
 
 const props = withDefaults(
@@ -68,6 +68,35 @@ function isSectionVisible(section: FormSection): boolean {
 const visibleSections = computed(() => props.schema.sections.filter(isSectionVisible))
 const hasSections = computed(() => visibleSections.value.length > 0)
 
+const validationErrors = computed<Record<string, string>>(() => {
+  const errors: Record<string, string> = {}
+  const ctx: ValidationContext = {
+    formValues: props.model as Record<string, unknown>,
+    externalContext: props.context as Record<string, unknown> | undefined,
+  }
+  for (const section of visibleSections.value) {
+    for (const field of section.fields) {
+      if (field.validate) {
+        const msg = field.validate(fieldValue(field), ctx)
+        if (msg) errors[field.key] = msg
+      }
+    }
+  }
+  if (props.schema.crossRules) {
+    for (const rule of props.schema.crossRules) {
+      if (errors[rule.fieldKey]) continue
+      const msg = rule.check(ctx)
+      if (msg) errors[rule.fieldKey] = msg
+    }
+  }
+  return errors
+})
+
+defineExpose({
+  validationErrors,
+  isValid: computed(() => Object.keys(validationErrors.value).length === 0),
+})
+
 const scopeLabels: Record<SectionScope, string> = {
   generic: '通用',
   redis: 'Redis',
@@ -106,6 +135,7 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
           v-for="field in section.fields"
           :key="field.key"
           :label="field.label"
+          :validation-status="validationErrors[field.key] ? 'error' : undefined"
           :class="{ 'field-full': field.type === 'string' && (field.key === 'jvmOptions' || field.key === 'note') }"
         >
           <NSelect
@@ -137,8 +167,8 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
             :rows="field.key === 'jvmOptions' || field.key === 'note' ? 4 : undefined"
             @update:value="onStringUpdate(field, $event)"
           />
-          <template v-if="field.description" #feedback>
-            {{ field.description }}
+          <template v-if="validationErrors[field.key] || field.description" #feedback>
+            {{ validationErrors[field.key] || field.description }}
           </template>
         </NFormItem>
       </div>

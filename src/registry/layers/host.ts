@@ -2,7 +2,8 @@
  * 宿主容器层定义：核心参数 / 核心配置 Schema 与层元信息
  */
 
-import type { LayerDefinition, FormSchema } from '../spec'
+import type { LayerDefinition, FormSchema, CrossFieldRule, FieldValidator } from '../spec'
+import { getByPath } from '../schemaBuild'
 
 const paramsSchema: FormSchema = {
   sections: [
@@ -63,6 +64,41 @@ const paramsSchema: FormSchema = {
   ],
 }
 
+const validatePortRange: FieldValidator = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const parts = value.trim().split(/\s+/)
+  if (parts.length !== 2) return '格式应为 "起始端口 结束端口"，如 "32768 60999"'
+  const [startStr, endStr] = parts
+  const start = Number(startStr)
+  const end = Number(endStr)
+  if (!Number.isInteger(start) || !Number.isInteger(end))
+    return '起始端口和结束端口必须为整数'
+  if (start < 1024) return `起始端口 (${start}) 不应小于 1024`
+  if (end > 65535) return `结束端口 (${end}) 不应超过 65535`
+  if (start >= end) return `起始端口 (${start}) 应小于结束端口 (${end})`
+}
+
+const configCrossRules: CrossFieldRule[] = [
+  {
+    fieldKey: 'fs.ulimitN',
+    check: ({ formValues }) => {
+      const ulimit = getByPath(formValues, 'fs.ulimitN') as number
+      const nrOpen = getByPath(formValues, 'fs.fsNrOpen') as number
+      if (typeof ulimit === 'number' && typeof nrOpen === 'number' && ulimit > nrOpen)
+        return `ulimit -n (${ulimit}) 不应超过 fs.nr_open (${nrOpen})，后者为内核单进程上限`
+    },
+  },
+  {
+    fieldKey: 'fs.fsNrOpen',
+    check: ({ formValues }) => {
+      const nrOpen = getByPath(formValues, 'fs.fsNrOpen') as number
+      const fileMax = getByPath(formValues, 'fs.fsFileMax') as number
+      if (typeof nrOpen === 'number' && typeof fileMax === 'number' && nrOpen > fileMax)
+        return `fs.nr_open (${nrOpen}) 不应超过 fs.file-max (${fileMax})，后者为系统全局上限`
+    },
+  },
+]
+
 const configSchema: FormSchema = {
   sections: [
     {
@@ -81,7 +117,14 @@ const configSchema: FormSchema = {
             { value: 2, label: '2：只对 loopback 开启' },
           ],
         },
-        { key: 'net.ipLocalPortRange', label: 'net.ipv4.ip_local_port_range', type: 'string', default: '32768 60999', placeholder: '32768 60999' },
+        {
+          key: 'net.ipLocalPortRange',
+          label: 'net.ipv4.ip_local_port_range',
+          type: 'string',
+          default: '32768 60999',
+          placeholder: '32768 60999',
+          validate: validatePortRange,
+        },
         { key: 'net.tcpMaxTwBuckets', label: 'net.ipv4.tcp_max_tw_buckets', type: 'number', default: 5000, min: 0 },
       ],
     },
@@ -95,6 +138,7 @@ const configSchema: FormSchema = {
       ],
     },
   ],
+  crossRules: configCrossRules,
 }
 
 export const hostLayer: LayerDefinition = {

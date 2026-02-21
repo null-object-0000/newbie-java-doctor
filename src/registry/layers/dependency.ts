@@ -4,7 +4,8 @@
  * client_only：仅一个节点，params/config 即 client；client_and_server：Server + Client 两节点组合，配置完全分开。
  */
 
-import type { LayerDefinition, FormSchema, DependencyNodeTypeDefinition } from '../spec'
+import type { LayerDefinition, FormSchema, DependencyNodeTypeDefinition, CrossFieldRule } from '../spec'
+import { getByPath } from '../schemaBuild'
 
 // ---------- Redis 子类型（client_and_server：Server 与 Client 配置分开） ----------
 const redisServerParamsSchema: FormSchema = {
@@ -129,6 +130,27 @@ const httpApiClientParamsSchema: FormSchema = {
   ],
 }
 
+const httpApiClientConfigCrossRules: CrossFieldRule[] = [
+  {
+    fieldKey: 'okhttp.maxRequestsPerHost',
+    check: ({ formValues }) => {
+      const perHost = getByPath(formValues, 'okhttp.maxRequestsPerHost') as number
+      const total = getByPath(formValues, 'okhttp.maxRequests') as number
+      if (typeof perHost === 'number' && typeof total === 'number' && perHost > total)
+        return `MaxRequestsPerHost (${perHost}) 不应超过 MaxRequests (${total})`
+    },
+  },
+  {
+    fieldKey: 'apache.maxConnPerRoute',
+    check: ({ formValues }) => {
+      const perRoute = getByPath(formValues, 'apache.maxConnPerRoute') as number
+      const total = getByPath(formValues, 'apache.maxConnTotal') as number
+      if (typeof perRoute === 'number' && typeof total === 'number' && perRoute > total)
+        return `MaxConnPerRoute (${perRoute}) 不应超过 MaxConnTotal (${total})`
+    },
+  },
+]
+
 const httpApiClientConfigSchema: FormSchema = {
   sections: [
     {
@@ -177,6 +199,7 @@ const httpApiClientConfigSchema: FormSchema = {
       ],
     },
   ],
+  crossRules: httpApiClientConfigCrossRules,
 }
 
 const httpApiChild: DependencyNodeTypeDefinition = {

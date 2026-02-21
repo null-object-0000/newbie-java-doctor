@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import {
   getLayerLabel,
   getLayerOrder,
@@ -31,8 +31,23 @@ export interface TopologyFullState {
   edgeParams: Record<string, Record<string, unknown>>
 }
 
+const STORAGE_KEY = 'newbie-java-doctor:topology'
+const AUTOSAVE_DEBOUNCE_MS = 800
+
 function deepClone<T>(x: T): T {
   return JSON.parse(JSON.stringify(x))
+}
+
+function loadFromStorage(): TopologyFullState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as TopologyFullState
+    if (!parsed.topology?.nodes || !parsed.topology?.edges) return null
+    return parsed
+  } catch {
+    return null
+  }
 }
 
 const DEFAULT_NODE_IDS = {
@@ -124,17 +139,23 @@ function getNodeDefaultConfig(node: TopologyNode): Record<string, unknown> {
 }
 
 export const useTopologyStore = defineStore('topology', () => {
+  const saved = loadFromStorage()
   const defaultTopology = buildDefaultTopology()
-  const topology = ref<Topology>(defaultTopology)
+
+  const topology = ref<Topology>(saved?.topology ?? defaultTopology)
 
   /** 所有节点的核心参数，按 nodeId 索引 */
-  const nodeParams = ref<Record<string, Record<string, unknown>>>(buildDefaultNodeParams())
+  const nodeParams = ref<Record<string, Record<string, unknown>>>(
+    saved?.nodeParams ?? buildDefaultNodeParams(),
+  )
   /** 所有节点的核心配置，按 nodeId 索引 */
-  const nodeConfig = ref<Record<string, Record<string, unknown>>>(buildDefaultNodeConfig())
+  const nodeConfig = ref<Record<string, Record<string, unknown>>>(
+    saved?.nodeConfig ?? buildDefaultNodeConfig(),
+  )
 
   /** 连线参数，按 edgeId 索引 */
   const edgeParams = ref<Record<string, Record<string, unknown>>>(
-    getDefaultTopologyEdgeParams(defaultTopology),
+    saved?.edgeParams ?? getDefaultTopologyEdgeParams(defaultTopology),
   )
 
   // ========== 撤销/重做 ==========
@@ -463,6 +484,73 @@ export const useTopologyStore = defineStore('topology', () => {
     }
   }
 
+  // ========== 导入/导出 ==========
+
+  /** 将导出格式（节点内联 params/config，连线内联 params）解析为 TopologyFullState */
+  function parseExportJson(json: string): TopologyFullState {
+    const data = JSON.parse(json)
+    if (!data.nodes || !Array.isArray(data.nodes)) throw new Error('缺少 nodes 数组')
+    if (!data.edges || !Array.isArray(data.edges)) throw new Error('缺少 edges 数组')
+
+    const np: Record<string, Record<string, unknown>> = {}
+    const nc: Record<string, Record<string, unknown>> = {}
+    const ep: Record<string, Record<string, unknown>> = {}
+
+    const nodes: TopologyNode[] = data.nodes.map((n: Record<string, unknown>) => {
+      const { params, config, ...rest } = n
+      if (params && typeof params === 'object') np[rest.id as string] = params as Record<string, unknown>
+      if (config && typeof config === 'object') nc[rest.id as string] = config as Record<string, unknown>
+      return rest as unknown as TopologyNode
+    })
+
+    const edges: TopologyEdge[] = data.edges.map((e: Record<string, unknown>) => {
+      const { params, ...rest } = e
+      if (params && typeof params === 'object') ep[rest.id as string] = params as Record<string, unknown>
+      return rest as unknown as TopologyEdge
+    })
+
+    return { topology: { nodes, edges }, nodeParams: np, nodeConfig: nc, edgeParams: ep }
+  }
+
+  /** 导入完整状态（会先保存当前状态到撤销历史） */
+  function importFullState(state: TopologyFullState): void {
+    pushState()
+    setFullState(state)
+  }
+
+  /** 从导出 JSON 字符串导入 */
+  function importFromJson(json: string): { ok: true } | { ok: false; message: string } {
+    try {
+      const state = parseExportJson(json)
+      importFullState(state)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : '导入失败' }
+    }
+  }
+
+  // ========== localStorage 自动保存 ==========
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+  function saveToStorage(): void {
+    try {
+      const state: TopologyFullState = deepClone(getFullState())
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    } catch { /* quota exceeded — silently ignore */ }
+  }
+
+  function debouncedSave(): void {
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(saveToStorage, AUTOSAVE_DEBOUNCE_MS)
+  }
+
+  watch([topology, nodeParams, nodeConfig, edgeParams], debouncedSave, { deep: true })
+
+  /** 清除本地存储的拓扑数据 */
+  function clearStorage(): void {
+    localStorage.removeItem(STORAGE_KEY)
+  }
+
   return {
     topology,
     nodeParams,
@@ -482,5 +570,9 @@ export const useTopologyStore = defineStore('topology', () => {
     removeNode,
     resetNode,
     resetEdgeParams,
+    getFullState,
+    importFullState,
+    importFromJson,
+    clearStorage,
   }
 })

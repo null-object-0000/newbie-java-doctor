@@ -8,6 +8,32 @@
  * - 扩展方式：通过 register 向注册表追加或覆盖定义，业务层统一从 registry 读取，不写死层/节点列表。
  */
 
+// ========== 校验类型 ==========
+
+/** 校验上下文：提供当前表单所有字段值及外部上下文（如 params -> config 的联动） */
+export interface ValidationContext {
+  /** 当前表单内所有字段值（可能是嵌套对象，通过 dot-path 写入） */
+  formValues: Record<string, unknown>
+  /** 外部上下文，例如编辑核心配置时传入的同节点核心参数 */
+  externalContext?: Record<string, unknown>
+}
+
+/** 字段级校验器：返回错误信息字符串表示校验失败，返回 undefined 表示通过 */
+export type FieldValidator = (
+  value: unknown,
+  ctx: ValidationContext,
+) => string | undefined
+
+/** 跨字段校验规则：检查多个字段之间的逻辑约束 */
+export interface CrossFieldRule {
+  /** 错误信息应挂载到哪个字段的 key（用于定位展示位置） */
+  fieldKey: string
+  /** 校验函数：返回错误信息表示校验失败，返回 undefined 表示通过 */
+  check: (ctx: ValidationContext) => string | undefined
+}
+
+// ========== 字段与表单定义 ==========
+
 /** 单字段定义：key 为 dot-path（如 spec.vCpu），label/description 用于展示，type 决定控件，default 为默认值 */
 export interface FieldDefinition {
   key: string
@@ -21,6 +47,8 @@ export interface FieldDefinition {
   min?: number
   max?: number
   step?: number
+  /** 字段级自定义校验器 */
+  validate?: FieldValidator
 }
 
 /** 依赖层专用：区块归属「通用」或某类依赖（如 redis / database），用于分组、筛选或展示说明 */
@@ -49,6 +77,8 @@ export interface FormSection {
 /** 完整表单 Schema：多区块，驱动动态表单渲染与默认值生成 */
 export interface FormSchema {
   sections: FormSection[]
+  /** 跨字段校验规则：用于检查同一表单内多个字段之间的逻辑约束 */
+  crossRules?: CrossFieldRule[]
 }
 
 /** 拓扑图节点卡片上要展示的字段：来自核心参数/核心配置的 dot-path 列表 */

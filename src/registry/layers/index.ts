@@ -46,12 +46,25 @@ const defaultLayers: LayerDefinition[] = [
 
 // ---------- 可变的注册表（深拷贝默认，便于扩展） ----------
 
-const layers: LayerDefinition[] = JSON.parse(JSON.stringify(defaultLayers))
-let layerOrder: LayerOrder = [...DEFAULT_LAYER_ORDER]
-
+/**
+ * 深拷贝，保留函数引用（JSON.parse/stringify 会丢弃函数，导致 crossRules.check / validate 丢失）
+ */
 function deepClone<T>(x: T): T {
-  return JSON.parse(JSON.stringify(x))
+  if (x === null || x === undefined) return x
+  if (typeof x === 'function') return x
+  if (Array.isArray(x)) return x.map((item) => deepClone(item)) as unknown as T
+  if (typeof x === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const key of Object.keys(x as Record<string, unknown>)) {
+      result[key] = deepClone((x as Record<string, unknown>)[key])
+    }
+    return result as T
+  }
+  return x
 }
+
+const layers: LayerDefinition[] = defaultLayers.map((l) => deepClone(l))
+let layerOrder: LayerOrder = [...DEFAULT_LAYER_ORDER]
 
 /** 注册或覆盖一层（同 id 覆盖）；paramsSchema/configSchema 或 defaultParams/defaultConfig 会深拷贝存储 */
 export const registerLayer: RegisterLayer = (def) => {

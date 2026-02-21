@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NConfigProvider, NMessageProvider } from 'naive-ui'
+import { NConfigProvider, NDialogProvider, NMessageProvider } from 'naive-ui'
 import hljs from 'highlight.js/lib/core'
 import json from 'highlight.js/lib/languages/json'
 import { themeOverrides } from '@/theme'
@@ -10,9 +10,11 @@ hljs.registerLanguage('json', json)
 
 <template>
   <NConfigProvider :theme-overrides="themeOverrides" :hljs="hljs">
-    <NMessageProvider>
-      <AppLayout />
-    </NMessageProvider>
+    <NDialogProvider>
+      <NMessageProvider>
+        <AppLayout />
+      </NMessageProvider>
+    </NDialogProvider>
   </NConfigProvider>
 </template>
 

@@ -12,7 +12,7 @@ import {
   getEdgeValueLabel,
 } from '@/registry/layers'
 import { getByPath } from '@/registry/schemaBuild'
-import { NButton, NButtonGroup, NCard, NCode, NEmpty, NText, useMessage } from 'naive-ui'
+import { NButton, NButtonGroup, NCard, NCode, NEmpty, NText, useDialog, useMessage } from 'naive-ui'
 import TopologyDiagram from '@/components/TopologyDiagram.vue'
 import NodeListPanel from '@/components/NodeListPanel.vue'
 import NodeEditorPanel from '@/components/NodeEditorPanel.vue'
@@ -20,6 +20,7 @@ import EdgeEditorPanel from '@/components/EdgeEditorPanel.vue'
 import type { TopologyNode, TopologyEdge } from '@/types/layers'
 
 const message = useMessage()
+const dialog = useDialog()
 const store = useTopologyStore()
 const {
   topology,
@@ -114,6 +115,52 @@ async function copyJson() {
   } catch {
     message.error('复制失败，请手动选择后复制')
   }
+}
+
+function downloadJson() {
+  const blob = new Blob([topologyJson.value], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `topology-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+function triggerImport() {
+  fileInputRef.value?.click()
+}
+
+function handleFileImport(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  input.value = ''
+
+  const reader = new FileReader()
+  reader.onload = () => {
+    const content = reader.result as string
+    dialog.warning({
+      title: '导入拓扑',
+      content: '导入将替换当前拓扑数据（可通过撤销恢复），确认继续？',
+      positiveText: '确认导入',
+      negativeText: '取消',
+      onPositiveClick: () => {
+        const result = store.importFromJson(content)
+        if (result.ok) {
+          editingNode.value = null
+          editingEdge.value = null
+          message.success('导入成功')
+        } else {
+          message.error(`导入失败：${result.message}`)
+        }
+      },
+    })
+  }
+  reader.onerror = () => message.error('文件读取失败')
+  reader.readAsText(file)
 }
 
 /** 当前编辑的节点（点击拓扑图节点时设置；依赖层需据此取 kind 与节点 params/config） */
@@ -224,9 +271,16 @@ function onDropFromPalette(payload: DropPayload) {
           </NButtonGroup>
         </template>
         <template #header-extra>
-          <NButton v-if="middleViewMode === 'json'" size="tiny" secondary @click="copyJson">
-            复制
-          </NButton>
+          <div class="header-actions">
+            <NButtonGroup size="tiny">
+              <NButton secondary @click="triggerImport">导入</NButton>
+              <NButton secondary @click="downloadJson">导出</NButton>
+            </NButtonGroup>
+            <NButton v-if="middleViewMode === 'json'" size="tiny" secondary @click="copyJson">
+              复制
+            </NButton>
+          </div>
+          <input ref="fileInputRef" type="file" accept=".json" style="display: none" @change="handleFileImport" />
         </template>
         <div class="middle-content">
           <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
@@ -332,5 +386,11 @@ function onDropFromPalette(payload: DropPayload) {
 
 .panel-placeholder {
   padding: 1.5rem 1.25rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 </style>
