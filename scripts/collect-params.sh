@@ -17,12 +17,12 @@
 # 导入方式：在 Web 页面点击「导入」按钮，选择生成的 JSON 文件即可。
 # ============================================================================
 
-set -euo pipefail
+echo "[collect-params] 开始采集容器参数..." >&2
 
 OUTPUT_FILE=""
 PRETTY=false
 
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
   case "$1" in
     -o|--output) OUTPUT_FILE="$2"; shift 2 ;;
     --pretty)    PRETTY=true; shift ;;
@@ -35,12 +35,10 @@ done
 
 # ── 工具函数 ─────────────────────────────────────────────────────────────────
 
-read_proc() { cat "$1" 2>/dev/null || echo ""; }
-
 read_sysctl_val() {
-  local path="/proc/sys/${1//./\/}"
-  if [[ -r "$path" ]]; then
-    cat "$path" 2>/dev/null | tr -d '\n'
+  local path="/proc/sys/$(echo "$1" | tr '.' '/')"
+  if [ -r "$path" ]; then
+    tr -d '\n' < "$path" 2>/dev/null
   else
     echo ""
   fi
@@ -48,22 +46,24 @@ read_sysctl_val() {
 
 to_int() { printf '%.0f' "${1:-0}" 2>/dev/null || echo "0"; }
 
-json_str() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g'; }
+json_str() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'; }
 
 # ── 宿主容器层 · 核心参数 ───────────────────────────────────────────────────
+
+echo "[collect-params] 采集 CPU / 内存 / 架构..." >&2
 
 # vCPU
 VCPU=$(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo "1")
 
 # 单核频率 (GHz)
 CPU_MHZ=""
-if command -v lscpu &>/dev/null; then
+if command -v lscpu >/dev/null 2>&1; then
   CPU_MHZ=$(lscpu 2>/dev/null | awk -F: '/CPU max MHz|CPU MHz/ {gsub(/[[:space:]]/,"",$2); print $2; exit}')
 fi
-if [[ -z "$CPU_MHZ" ]]; then
-  CPU_MHZ=$(awk '/cpu MHz/ {print $4; exit}' /proc/cpuinfo 2>/dev/null)
+if [ -z "$CPU_MHZ" ]; then
+  CPU_MHZ=$(awk '/cpu MHz/ {print $4; exit}' /proc/cpuinfo 2>/dev/null || true)
 fi
-if [[ -n "$CPU_MHZ" ]]; then
+if [ -n "$CPU_MHZ" ]; then
   CPU_GHZ=$(awk "BEGIN {printf \"%.1f\", ${CPU_MHZ}/1000}")
 else
   CPU_GHZ="2.5"
@@ -72,7 +72,9 @@ fi
 # 内存 (GB)
 MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo "0")
 MEM_GB=$(awk "BEGIN {printf \"%.0f\", ${MEM_KB}/1048576}")
-[[ "$MEM_GB" -lt 1 ]] && MEM_GB=1
+if [ "$MEM_GB" -lt 1 ] 2>/dev/null; then
+  MEM_GB=1
+fi
 
 # 架构
 ARCH_RAW=$(uname -m 2>/dev/null || echo "x86_64")
@@ -82,42 +84,48 @@ case "$ARCH_RAW" in
   *)                ARCH="x86" ;;
 esac
 
+echo "[collect-params] 采集磁盘 / 网络..." >&2
+
 # 磁盘类型
 DISK_TYPE="ssd"
-if [[ -d /sys/block ]]; then
+if [ -d /sys/block ]; then
   for dev in /sys/block/sd* /sys/block/vd* /sys/block/nvme*; do
-    [[ -e "$dev" ]] || continue
+    [ -e "$dev" ] || continue
     rotational=$(cat "$dev/queue/rotational" 2>/dev/null || echo "")
     devname=$(basename "$dev")
-    if [[ "$devname" == nvme* ]]; then
-      DISK_TYPE="nvme"; break
-    elif [[ "$rotational" == "0" ]]; then
+    case "$devname" in
+      nvme*) DISK_TYPE="nvme"; break ;;
+    esac
+    if [ "$rotational" = "0" ]; then
       DISK_TYPE="ssd"
-    elif [[ "$rotational" == "1" ]]; then
+    elif [ "$rotational" = "1" ]; then
       DISK_TYPE="hdd"
     fi
   done
 fi
 
-# IOPS / 磁盘吞吐量（难以自动探测，使用合理默认值）
 IOPS_LIMIT=10000
 DISK_THROUGHPUT=500
 
 # NIC 带宽 (Gbps)
 NIC_SPEED_MBPS=""
-for iface in /sys/class/net/*; do
-  name=$(basename "$iface")
-  [[ "$name" == "lo" ]] && continue
-  speed=$(cat "$iface/speed" 2>/dev/null || echo "")
-  if [[ -n "$speed" && "$speed" != "-1" && "$speed" -gt 0 ]] 2>/dev/null; then
-    if [[ -z "$NIC_SPEED_MBPS" || "$speed" -gt "$NIC_SPEED_MBPS" ]]; then
-      NIC_SPEED_MBPS="$speed"
+if [ -d /sys/class/net ]; then
+  for iface in /sys/class/net/*; do
+    name=$(basename "$iface")
+    [ "$name" = "lo" ] && continue
+    speed=$(cat "$iface/speed" 2>/dev/null || echo "")
+    if [ -n "$speed" ] && [ "$speed" != "-1" ] && [ "$speed" -gt 0 ] 2>/dev/null; then
+      if [ -z "$NIC_SPEED_MBPS" ] || [ "$speed" -gt "$NIC_SPEED_MBPS" ] 2>/dev/null; then
+        NIC_SPEED_MBPS="$speed"
+      fi
     fi
-  fi
-done
-if [[ -n "$NIC_SPEED_MBPS" ]]; then
+  done
+fi
+if [ -n "$NIC_SPEED_MBPS" ]; then
   NIC_GBPS=$(awk "BEGIN {printf \"%.0f\", ${NIC_SPEED_MBPS}/1000}")
-  [[ "$NIC_GBPS" -lt 1 ]] && NIC_GBPS=1
+  if [ "$NIC_GBPS" -lt 1 ] 2>/dev/null; then
+    NIC_GBPS=1
+  fi
 else
   NIC_GBPS=10
 fi
@@ -126,33 +134,39 @@ PPS_LIMIT=1000000
 
 # OS 版本
 OS_VERSION=""
-if [[ -f /etc/os-release ]]; then
+if [ -f /etc/os-release ]; then
   OS_VERSION=$(. /etc/os-release && echo "${PRETTY_NAME:-${NAME:-Unknown} ${VERSION:-}}")
 fi
-[[ -z "$OS_VERSION" ]] && OS_VERSION=$(cat /etc/redhat-release 2>/dev/null || echo "Unknown")
+if [ -z "$OS_VERSION" ]; then
+  OS_VERSION=$(cat /etc/redhat-release 2>/dev/null || echo "Unknown")
+fi
 
 # 内核版本
 KERNEL_VERSION=$(uname -r 2>/dev/null || echo "unknown")
 
 # ── 宿主容器层 · 核心配置 ───────────────────────────────────────────────────
 
+echo "[collect-params] 采集内核参数 (sysctl / ulimit)..." >&2
+
 TCP_TW_REUSE=$(read_sysctl_val "net.ipv4.tcp_tw_reuse")
-[[ -z "$TCP_TW_REUSE" ]] && TCP_TW_REUSE=1
+if [ -z "$TCP_TW_REUSE" ]; then TCP_TW_REUSE=1; fi
 
 IP_LOCAL_PORT_RANGE=$(read_sysctl_val "net.ipv4.ip_local_port_range")
-IP_LOCAL_PORT_RANGE=$(echo "$IP_LOCAL_PORT_RANGE" | sed 's/\t/ /g; s/  */ /g; s/^ //; s/ $//')
-[[ -z "$IP_LOCAL_PORT_RANGE" ]] && IP_LOCAL_PORT_RANGE="32768 60999"
+IP_LOCAL_PORT_RANGE=$(echo "$IP_LOCAL_PORT_RANGE" | sed 's/	/ /g; s/  */ /g; s/^ //; s/ $//')
+if [ -z "$IP_LOCAL_PORT_RANGE" ]; then IP_LOCAL_PORT_RANGE="32768 60999"; fi
 
 TCP_MAX_TW_BUCKETS=$(read_sysctl_val "net.ipv4.tcp_max_tw_buckets")
-[[ -z "$TCP_MAX_TW_BUCKETS" ]] && TCP_MAX_TW_BUCKETS=5000
+if [ -z "$TCP_MAX_TW_BUCKETS" ]; then TCP_MAX_TW_BUCKETS=5000; fi
 
 ULIMIT_N=$(ulimit -n 2>/dev/null || echo "65535")
 FS_NR_OPEN=$(read_sysctl_val "fs.nr_open")
-[[ -z "$FS_NR_OPEN" ]] && FS_NR_OPEN=65535
+if [ -z "$FS_NR_OPEN" ]; then FS_NR_OPEN=65535; fi
 FS_FILE_MAX=$(read_sysctl_val "fs.file-max")
-[[ -z "$FS_FILE_MAX" ]] && FS_FILE_MAX=2097152
+if [ -z "$FS_FILE_MAX" ]; then FS_FILE_MAX=2097152; fi
 
 # ── 运行时层 · 从 Java 进程采集 ─────────────────────────────────────────────
+
+echo "[collect-params] 检测 Java 进程..." >&2
 
 JDK_VERSION=""
 GC_TYPE="G1GC"
@@ -165,48 +179,43 @@ VIRTUAL_THREADS=true
 
 # 尝试从正在运行的 Java 进程获取 JVM 参数
 JAVA_PID=""
-if command -v pgrep &>/dev/null; then
+if command -v pgrep >/dev/null 2>&1; then
   JAVA_PID=$(pgrep -x java 2>/dev/null | head -1 || true)
 fi
-if [[ -z "$JAVA_PID" ]]; then
+if [ -z "$JAVA_PID" ]; then
   JAVA_PID=$(ps -eo pid,comm 2>/dev/null | awk '$2=="java" {print $1; exit}' || true)
 fi
 
-if [[ -n "$JAVA_PID" && -r "/proc/$JAVA_PID/cmdline" ]]; then
+if [ -n "$JAVA_PID" ] && [ -r "/proc/$JAVA_PID/cmdline" ]; then
   CMDLINE=$(tr '\0' ' ' < "/proc/$JAVA_PID/cmdline" 2>/dev/null || true)
 
-  # JVM 启动参数
-  JVM_OPTS_RAW=$(echo "$CMDLINE" | grep -oP '(-X\S+|-D\S+|--add-\S+)' | tr '\n' ' ' | sed 's/ $//')
-  [[ -n "$JVM_OPTS_RAW" ]] && JVM_OPTIONS="$JVM_OPTS_RAW"
+  # JVM 启动参数（用 grep -oE 替代 grep -oP 以兼容更多环境）
+  JVM_OPTS_RAW=$(echo "$CMDLINE" | grep -oE '(\-X[^ ]+|\-D[^ ]+|\-\-add\-[^ ]+)' 2>/dev/null | tr '\n' ' ' | sed 's/ $//' || true)
+  if [ -n "$JVM_OPTS_RAW" ]; then JVM_OPTIONS="$JVM_OPTS_RAW"; fi
 
   # GC 类型推断
-  if echo "$CMDLINE" | grep -qiP '(UseZGC|ZGenerational)'; then
-    GC_TYPE="ZGC"
-  elif echo "$CMDLINE" | grep -qi 'UseShenandoahGC'; then
-    GC_TYPE="Shenandoah"
-  elif echo "$CMDLINE" | grep -qi 'UseConcMarkSweepGC'; then
-    GC_TYPE="CMS"
-  elif echo "$CMDLINE" | grep -qi 'UseParallelGC'; then
-    GC_TYPE="Parallel"
-  elif echo "$CMDLINE" | grep -qi 'UseG1GC'; then
-    GC_TYPE="G1GC"
-  elif echo "$CMDLINE" | grep -qi 'UseSerialGC'; then
-    GC_TYPE="Serial"
-  fi
+  case "$CMDLINE" in
+    *UseZGC*|*ZGenerational*)   GC_TYPE="ZGC" ;;
+    *UseShenandoahGC*)          GC_TYPE="Shenandoah" ;;
+    *UseConcMarkSweepGC*)       GC_TYPE="CMS" ;;
+    *UseParallelGC*)            GC_TYPE="Parallel" ;;
+    *UseG1GC*)                  GC_TYPE="G1GC" ;;
+    *UseSerialGC*)              GC_TYPE="Serial" ;;
+  esac
 
-  # Spring Boot Tomcat 相关（从 -D 参数读取）
-  val=$(echo "$CMDLINE" | grep -oP '(?<=-Dserver\.tomcat\.threads\.max=)\d+' || true)
-  [[ -n "$val" ]] && TOMCAT_MAX_THREADS=$val
-  val=$(echo "$CMDLINE" | grep -oP '(?<=-Dserver\.tomcat\.threads\.min-spare=)\d+' || true)
-  [[ -n "$val" ]] && TOMCAT_MIN_SPARE=$val
-  val=$(echo "$CMDLINE" | grep -oP '(?<=-Dserver\.tomcat\.max-connections=)\d+' || true)
-  [[ -n "$val" ]] && TOMCAT_MAX_CONNECTIONS=$val
-  val=$(echo "$CMDLINE" | grep -oP '(?<=-Dserver\.tomcat\.accept-count=)\d+' || true)
-  [[ -n "$val" ]] && TOMCAT_ACCEPT_COUNT=$val
+  # Spring Boot Tomcat 相关（从 -D 参数读取，用 sed 替代 grep -P 的 lookbehind）
+  val=$(echo "$CMDLINE" | sed -n 's/.*-Dserver\.tomcat\.threads\.max=\([0-9]*\).*/\1/p' || true)
+  if [ -n "$val" ]; then TOMCAT_MAX_THREADS=$val; fi
+  val=$(echo "$CMDLINE" | sed -n 's/.*-Dserver\.tomcat\.threads\.min-spare=\([0-9]*\).*/\1/p' || true)
+  if [ -n "$val" ]; then TOMCAT_MIN_SPARE=$val; fi
+  val=$(echo "$CMDLINE" | sed -n 's/.*-Dserver\.tomcat\.max-connections=\([0-9]*\).*/\1/p' || true)
+  if [ -n "$val" ]; then TOMCAT_MAX_CONNECTIONS=$val; fi
+  val=$(echo "$CMDLINE" | sed -n 's/.*-Dserver\.tomcat\.accept-count=\([0-9]*\).*/\1/p' || true)
+  if [ -n "$val" ]; then TOMCAT_ACCEPT_COUNT=$val; fi
 
-  if echo "$CMDLINE" | grep -q 'spring.threads.virtual.enabled=false'; then
-    VIRTUAL_THREADS=false
-  fi
+  case "$CMDLINE" in
+    *spring.threads.virtual.enabled=false*) VIRTUAL_THREADS=false ;;
+  esac
 fi
 
 # JDK 版本：优先从进程的 java 二进制获取，否则用 PATH 里的 java
@@ -217,55 +226,54 @@ detect_jdk_version() {
   echo "$ver_output" | head -1 | sed 's/.*"\(.*\)".*/\1/' | cut -d. -f1 | sed 's/^1$/1.8/'
 }
 
-if [[ -n "$JAVA_PID" && -r "/proc/$JAVA_PID/exe" ]]; then
+if [ -n "$JAVA_PID" ] && [ -r "/proc/$JAVA_PID/exe" ]; then
   JAVA_BIN=$(readlink -f "/proc/$JAVA_PID/exe" 2>/dev/null || true)
-  if [[ -n "$JAVA_BIN" && -x "$JAVA_BIN" ]]; then
+  if [ -n "$JAVA_BIN" ] && [ -x "$JAVA_BIN" ]; then
     JDK_VERSION=$(detect_jdk_version "$JAVA_BIN")
   fi
 fi
-if [[ -z "$JDK_VERSION" ]] && command -v java &>/dev/null; then
+if [ -z "$JDK_VERSION" ] && command -v java >/dev/null 2>&1; then
   JDK_VERSION=$(detect_jdk_version java)
 fi
-[[ -z "$JDK_VERSION" ]] && JDK_VERSION="21"
+if [ -z "$JDK_VERSION" ]; then JDK_VERSION="21"; fi
 
-# 尝试读取 Spring Boot application.properties / application.yml 中的 Tomcat 配置
+# 尝试读取 Spring Boot application.properties 中的 Tomcat 配置
 detect_spring_config() {
-  local search_dirs=("/app" "/opt" "/home" ".")
+  local search_dirs="/app /opt /home ."
   local found=""
-  for dir in "${search_dirs[@]}"; do
-    [[ -d "$dir" ]] || continue
-    found=$(find "$dir" -maxdepth 5 -name "application.properties" -o -name "application.yml" -o -name "application.yaml" 2>/dev/null | head -3)
-    [[ -n "$found" ]] && break
+  for dir in $search_dirs; do
+    [ -d "$dir" ] || continue
+    found=$(find "$dir" -maxdepth 5 \( -name "application.properties" -o -name "application.yml" -o -name "application.yaml" \) 2>/dev/null | head -3)
+    if [ -n "$found" ]; then break; fi
   done
-  [[ -z "$found" ]] && return
+  if [ -z "$found" ]; then return 0; fi
 
-  while IFS= read -r cfg_file; do
-    [[ -r "$cfg_file" ]] || continue
-
-    if [[ "$cfg_file" == *.properties ]]; then
-      local v
-      v=$(grep -oP '(?<=server\.tomcat\.threads\.max=)\d+' "$cfg_file" 2>/dev/null || true)
-      [[ -n "$v" ]] && TOMCAT_MAX_THREADS=$v
-      v=$(grep -oP '(?<=server\.tomcat\.threads\.min-spare=)\d+' "$cfg_file" 2>/dev/null || true)
-      [[ -n "$v" ]] && TOMCAT_MIN_SPARE=$v
-      v=$(grep -oP '(?<=server\.tomcat\.max-connections=)\d+' "$cfg_file" 2>/dev/null || true)
-      [[ -n "$v" ]] && TOMCAT_MAX_CONNECTIONS=$v
-      v=$(grep -oP '(?<=server\.tomcat\.accept-count=)\d+' "$cfg_file" 2>/dev/null || true)
-      [[ -n "$v" ]] && TOMCAT_ACCEPT_COUNT=$v
-
-      if grep -q 'spring.threads.virtual.enabled=true' "$cfg_file" 2>/dev/null; then
-        VIRTUAL_THREADS=true
-      elif grep -q 'spring.threads.virtual.enabled=false' "$cfg_file" 2>/dev/null; then
-        VIRTUAL_THREADS=false
-      fi
-    fi
-  done <<< "$found"
+  echo "$found" | while IFS= read -r cfg_file; do
+    [ -r "$cfg_file" ] || continue
+    case "$cfg_file" in
+      *.properties)
+        local v
+        v=$(sed -n 's/^server\.tomcat\.threads\.max=\([0-9]*\)/\1/p' "$cfg_file" 2>/dev/null || true)
+        if [ -n "$v" ]; then TOMCAT_MAX_THREADS=$v; fi
+        v=$(sed -n 's/^server\.tomcat\.threads\.min-spare=\([0-9]*\)/\1/p' "$cfg_file" 2>/dev/null || true)
+        if [ -n "$v" ]; then TOMCAT_MIN_SPARE=$v; fi
+        v=$(sed -n 's/^server\.tomcat\.max-connections=\([0-9]*\)/\1/p' "$cfg_file" 2>/dev/null || true)
+        if [ -n "$v" ]; then TOMCAT_MAX_CONNECTIONS=$v; fi
+        v=$(sed -n 's/^server\.tomcat\.accept-count=\([0-9]*\)/\1/p' "$cfg_file" 2>/dev/null || true)
+        if [ -n "$v" ]; then TOMCAT_ACCEPT_COUNT=$v; fi
+        if grep -q 'spring.threads.virtual.enabled=true' "$cfg_file" 2>/dev/null; then
+          VIRTUAL_THREADS=true
+        elif grep -q 'spring.threads.virtual.enabled=false' "$cfg_file" 2>/dev/null; then
+          VIRTUAL_THREADS=false
+        fi
+        ;;
+    esac
+  done
 }
 detect_spring_config
 
 # ── 组装 JSON ────────────────────────────────────────────────────────────────
 
-# Logback 核心配置使用合理默认值（日志配置通常存在 XML 中，自动解析复杂度高）
 LOGBACK_MAX_FILE_SIZE="100MB"
 LOGBACK_MAX_HISTORY=30
 LOGBACK_QUEUE_SIZE=256
@@ -382,52 +390,48 @@ cat << ENDJSON
 ENDJSON
 }
 
-# 输出采集摘要到 stderr（不影响 JSON 管道）
-summary() {
-  echo "┌─────────────────────────────────────────────────────────" >&2
-  echo "│ 容器参数采集完成" >&2
-  echo "├─────────────────────────────────────────────────────────" >&2
-  echo "│ 宿主容器层" >&2
-  echo "│   vCPU:        ${VCPU}" >&2
-  echo "│   频率:        ${CPU_GHZ} GHz" >&2
-  echo "│   内存:        ${MEM_GB} GB" >&2
-  echo "│   架构:        ${ARCH} (${ARCH_RAW})" >&2
-  echo "│   磁盘类型:    ${DISK_TYPE}" >&2
-  echo "│   NIC 带宽:    ${NIC_GBPS} Gbps" >&2
-  echo "│   OS:          ${OS_VERSION}" >&2
-  echo "│   Kernel:      ${KERNEL_VERSION}" >&2
-  echo "│   tcp_tw_reuse:       ${TCP_TW_REUSE}" >&2
-  echo "│   ip_local_port_range: ${IP_LOCAL_PORT_RANGE}" >&2
-  echo "│   tcp_max_tw_buckets: ${TCP_MAX_TW_BUCKETS}" >&2
-  echo "│   ulimit -n:   ${ULIMIT_N}" >&2
-  echo "│   fs.nr_open:  ${FS_NR_OPEN}" >&2
-  echo "│   fs.file-max: ${FS_FILE_MAX}" >&2
-  echo "├─────────────────────────────────────────────────────────" >&2
-  echo "│ 运行时层" >&2
-  echo "│   JDK 版本:    ${JDK_VERSION}" >&2
-  echo "│   GC:          ${GC_TYPE}" >&2
-  if [[ -n "$JAVA_PID" ]]; then
-    echo "│   Java PID:    ${JAVA_PID}" >&2
-  else
-    echo "│   Java PID:    (未检测到运行中的 Java 进程)" >&2
-  fi
-  if [[ -n "$JVM_OPTIONS" ]]; then
-    echo "│   JVM Options: ${JVM_OPTIONS:0:80}..." >&2
-  else
-    echo "│   JVM Options: (默认值)" >&2
-  fi
-  echo "│   Tomcat:      max-threads=${TOMCAT_MAX_THREADS}, max-connections=${TOMCAT_MAX_CONNECTIONS}" >&2
-  echo "└─────────────────────────────────────────────────────────" >&2
-}
-
-summary
+# 输出采集摘要到 stderr
+echo "┌─────────────────────────────────────────────────────────" >&2
+echo "│ 容器参数采集完成" >&2
+echo "├─────────────────────────────────────────────────────────" >&2
+echo "│ 宿主容器层" >&2
+echo "│   vCPU:        ${VCPU}" >&2
+echo "│   频率:        ${CPU_GHZ} GHz" >&2
+echo "│   内存:        ${MEM_GB} GB" >&2
+echo "│   架构:        ${ARCH} (${ARCH_RAW})" >&2
+echo "│   磁盘类型:    ${DISK_TYPE}" >&2
+echo "│   NIC 带宽:    ${NIC_GBPS} Gbps" >&2
+echo "│   OS:          ${OS_VERSION}" >&2
+echo "│   Kernel:      ${KERNEL_VERSION}" >&2
+echo "│   tcp_tw_reuse:        ${TCP_TW_REUSE}" >&2
+echo "│   ip_local_port_range: ${IP_LOCAL_PORT_RANGE}" >&2
+echo "│   tcp_max_tw_buckets:  ${TCP_MAX_TW_BUCKETS}" >&2
+echo "│   ulimit -n:   ${ULIMIT_N}" >&2
+echo "│   fs.nr_open:  ${FS_NR_OPEN}" >&2
+echo "│   fs.file-max: ${FS_FILE_MAX}" >&2
+echo "├─────────────────────────────────────────────────────────" >&2
+echo "│ 运行时层" >&2
+echo "│   JDK 版本:    ${JDK_VERSION}" >&2
+echo "│   GC:          ${GC_TYPE}" >&2
+if [ -n "$JAVA_PID" ]; then
+  echo "│   Java PID:    ${JAVA_PID}" >&2
+else
+  echo "│   Java PID:    (未检测到运行中的 Java 进程)" >&2
+fi
+if [ -n "$JVM_OPTIONS" ]; then
+  echo "│   JVM Options: $(echo "$JVM_OPTIONS" | cut -c1-80)..." >&2
+else
+  echo "│   JVM Options: (默认值)" >&2
+fi
+echo "│   Tomcat:      max-threads=${TOMCAT_MAX_THREADS}, max-connections=${TOMCAT_MAX_CONNECTIONS}" >&2
+echo "└─────────────────────────────────────────────────────────" >&2
 
 # 输出 JSON
-if [[ -n "$OUTPUT_FILE" ]]; then
+if [ -n "$OUTPUT_FILE" ]; then
   if $PRETTY; then
-    if command -v python3 &>/dev/null; then
+    if command -v python3 >/dev/null 2>&1; then
       cat_json | python3 -m json.tool > "$OUTPUT_FILE"
-    elif command -v jq &>/dev/null; then
+    elif command -v jq >/dev/null 2>&1; then
       cat_json | jq '.' > "$OUTPUT_FILE"
     else
       cat_json > "$OUTPUT_FILE"
@@ -438,9 +442,9 @@ if [[ -n "$OUTPUT_FILE" ]]; then
   echo "✓ JSON 已写入: ${OUTPUT_FILE}" >&2
 else
   if $PRETTY; then
-    if command -v python3 &>/dev/null; then
+    if command -v python3 >/dev/null 2>&1; then
       cat_json | python3 -m json.tool
-    elif command -v jq &>/dev/null; then
+    elif command -v jq >/dev/null 2>&1; then
       cat_json | jq '.'
     else
       cat_json
