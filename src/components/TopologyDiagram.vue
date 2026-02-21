@@ -341,6 +341,20 @@ function handleNodeClick(_args: {
 /** 连线选中时显示的删除按钮配置（仅选中时显示） */
 const EDGE_REMOVE_TOOL = [{ name: 'button-remove', args: { distance: 20 } }]
 
+/** 判断连线是否是同组 client→server 的组内连线（不可删除） */
+function isGroupEdge(edgeId: string): boolean {
+  const edge = props.edges.find((e) => e.id === edgeId)
+  if (!edge) return false
+  const src = props.nodes.find((n) => n.id === edge.source)
+  const tgt = props.nodes.find((n) => n.id === edge.target)
+  return !!(
+    src?.dependencyGroupId &&
+    src.dependencyGroupId === tgt?.dependencyGroupId &&
+    src.dependencyRole === 'client' &&
+    tgt?.dependencyRole === 'server'
+  )
+}
+
 // ========== Edge Selection ==========
 function selectEdge(edgeId: string | null) {
   if (!graph) return
@@ -353,12 +367,14 @@ function selectEdge(edgeId: string | null) {
     }
   }
   selectedEdgeId.value = edgeId
-  // 设置新的选中：加粗并显示删除按钮
+  // 设置新的选中：加粗并显示删除按钮（组内连线不显示删除按钮）
   if (edgeId) {
     const edge = graph.getCellById(edgeId)
     if (edge && graph.isEdge(edge)) {
       edge.setAttrByPath('line/strokeWidth', 3)
-      ;(edge as unknown as { setTools: (t: unknown[]) => void }).setTools(EDGE_REMOVE_TOOL)
+      if (!isGroupEdge(edgeId)) {
+        ;(edge as unknown as { setTools: (t: unknown[]) => void }).setTools(EDGE_REMOVE_TOOL)
+      }
     }
   }
 }
@@ -382,10 +398,11 @@ function showNodeContextMenu(e: MouseEvent, nodeId: string) {
 
 function showEdgeContextMenu(e: MouseEvent, edgeId: string) {
   ctxTarget = { type: 'edge', id: edgeId }
+  const groupEdge = isGroupEdge(edgeId)
   ctxMenu.options = [
     { label: '编辑属性', key: 'edit-edge' },
     { type: 'divider', key: 'd1' },
-    { label: '删除连线', key: 'delete-edge' },
+    { label: '删除连线', key: 'delete-edge', disabled: groupEdge },
   ]
   ctxMenu.x = e.clientX
   ctxMenu.y = e.clientY
@@ -451,6 +468,7 @@ function onCtxMenuClickOutside() {
 // ========== Delete selected ==========
 function deleteSelected() {
   if (selectedEdgeId.value) {
+    if (isGroupEdge(selectedEdgeId.value)) return
     emit('edgeRemoved', selectedEdgeId.value)
     selectEdge(null)
     return
@@ -765,12 +783,14 @@ function doSyncGraph() {
 
   positionOnlyRef.value = false
 
-  // 若当前有选中的连线，确保其显示删除按钮（sync 可能重建边）
+  // 若当前有选中的连线，确保其显示删除按钮（sync 可能重建边；组内连线不显示）
   if (selectedEdgeId.value) {
     const sel = graph.getCellById(selectedEdgeId.value)
     if (sel && graph.isEdge(sel)) {
       sel.setAttrByPath('line/strokeWidth', 3)
-      ;(sel as unknown as { setTools: (t: unknown[]) => void }).setTools(EDGE_REMOVE_TOOL)
+      if (!isGroupEdge(selectedEdgeId.value)) {
+        ;(sel as unknown as { setTools: (t: unknown[]) => void }).setTools(EDGE_REMOVE_TOOL)
+      }
     }
   }
 }
@@ -978,10 +998,7 @@ onMounted(() => {
         },
       },
     },
-    interacting: ((
-      _graph: import('@antv/x6').Graph,
-      cellView: import('@antv/x6').CellView | undefined,
-    ) => {
+    interacting: ((cellView: import('@antv/x6').CellView | undefined) => {
       if (!cellView?.cell) {
         return {
           nodeMovable: true,
