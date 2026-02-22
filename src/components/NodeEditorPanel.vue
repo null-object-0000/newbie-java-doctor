@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { LayerId } from '@/types/layers'
-import { getLayerLabel, getDependencyNodeTypeLabel, getParamsSchema, getConfigSchema } from '@/registry/layers'
+import { getLayerLabel, getDependencyNodeTypeLabel, getConstraintsSchema, getObjectivesSchema, getTunablesSchema } from '@/registry/layers'
 import { NTabs, NTabPane, NButton, NText } from 'naive-ui'
 import NodeEditorContent from '@/components/NodeEditorContent.vue'
 import type { TopologyNode } from '@/types/layers'
@@ -15,29 +15,38 @@ defineEmits<{
   close: []
 }>()
 
-const activeTab = ref<string>('params')
+const activeInputTab = ref<string>('constraints')
 
-const hasParamsSchema = computed(() =>
-  !!getParamsSchema(
+const hasConstraintsSchema = computed(() =>
+  !!getConstraintsSchema(
     props.layerId,
     props.editingNode?.dependencyKind,
     props.editingNode?.dependencyRole
   )
 )
-const hasConfigSchema = computed(() =>
-  !!getConfigSchema(
+const hasObjectivesSchema = computed(() =>
+  !!getObjectivesSchema(
     props.layerId,
     props.editingNode?.dependencyKind,
     props.editingNode?.dependencyRole
   )
 )
+const hasTunablesSchema = computed(() =>
+  !!getTunablesSchema(
+    props.layerId,
+    props.editingNode?.dependencyKind,
+    props.editingNode?.dependencyRole
+  )
+)
+
+const hasInputSection = computed(() => hasConstraintsSchema.value || hasObjectivesSchema.value)
 
 watch(
-  [hasParamsSchema, hasConfigSchema],
-  ([params, config]) => {
-    const current = activeTab.value
-    if (current === 'params' && !params) activeTab.value = config ? 'config' : 'params'
-    else if (current === 'config' && !config) activeTab.value = params ? 'params' : 'config'
+  [hasConstraintsSchema, hasObjectivesSchema],
+  ([c, o]) => {
+    const current = activeInputTab.value
+    if (current === 'constraints' && !c) activeInputTab.value = o ? 'objectives' : 'constraints'
+    else if (current === 'objectives' && !o) activeInputTab.value = c ? 'constraints' : 'objectives'
   },
   { immediate: true }
 )
@@ -62,26 +71,72 @@ const nodeTitle = computed(() => {
         <template #icon>×</template>
       </NButton>
     </header>
-    <NTabs v-model:value="activeTab" type="line" size="small" class="panel-tabs">
-      <NTabPane v-if="hasParamsSchema || !hasConfigSchema" name="params" tab="核心参数">
-        <div class="panel-body">
-          <NodeEditorContent
-            :layer-id="layerId"
-            section="params"
-            :editing-node="editingNode"
-          />
+
+    <div class="panel-content" :class="{ 'has-both': hasInputSection && hasTunablesSchema }">
+      <!-- 上半部分：环境约束 / 负载目标 -->
+      <div v-if="hasInputSection" class="input-section">
+        <NTabs
+          v-if="hasConstraintsSchema && hasObjectivesSchema"
+          v-model:value="activeInputTab"
+          type="line"
+          size="small"
+          class="input-tabs"
+        >
+          <NTabPane name="constraints" tab="环境约束">
+            <div class="section-body">
+              <NodeEditorContent
+                :layer-id="layerId"
+                section="constraints"
+                :editing-node="editingNode"
+              />
+            </div>
+          </NTabPane>
+          <NTabPane name="objectives" tab="负载目标">
+            <div class="section-body">
+              <NodeEditorContent
+                :layer-id="layerId"
+                section="objectives"
+                :editing-node="editingNode"
+              />
+            </div>
+          </NTabPane>
+        </NTabs>
+        <!-- 只有一种输入类型时不用 Tab，直接显示标题 -->
+        <template v-else>
+          <div class="section-sticky-header">
+            <NText strong depth="2">{{ hasConstraintsSchema ? '环境约束' : '负载目标' }}</NText>
+          </div>
+          <div class="section-scroll">
+            <div class="section-body">
+              <NodeEditorContent
+                :layer-id="layerId"
+                :section="hasConstraintsSchema ? 'constraints' : 'objectives'"
+                :editing-node="editingNode"
+              />
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- 分隔线 -->
+      <div v-if="hasInputSection && hasTunablesSchema" class="section-divider" />
+
+      <!-- 下半部分：可调配置 -->
+      <div v-if="hasTunablesSchema" class="tunables-section">
+        <div class="section-sticky-header">
+          <NText strong depth="2">可调配置</NText>
         </div>
-      </NTabPane>
-      <NTabPane v-if="hasConfigSchema" name="config" tab="核心配置">
-        <div class="panel-body">
-          <NodeEditorContent
-            :layer-id="layerId"
-            section="config"
-            :editing-node="editingNode"
-          />
+        <div class="section-scroll">
+          <div class="section-body">
+            <NodeEditorContent
+              :layer-id="layerId"
+              section="tunables"
+              :editing-node="editingNode"
+            />
+          </div>
         </div>
-      </NTabPane>
-    </NTabs>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -107,24 +162,77 @@ const nodeTitle = computed(() => {
   font-size: 1rem;
 }
 
-.panel-tabs {
+.panel-content {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.panel-tabs :deep(.n-tabs-nav) {
+/* 只有一个区块时占满 */
+.panel-content:not(.has-both) > .input-section,
+.panel-content:not(.has-both) > .tunables-section {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 两个区块同时存在时各占一半 */
+.panel-content.has-both > .input-section,
+.panel-content.has-both > .tunables-section {
+  flex: 1;
+  min-height: 0;
+}
+
+.input-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.tunables-section {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Tabs 模式（两个输入 Tab）---- */
+.input-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.input-tabs :deep(.n-tabs-nav) {
+  flex-shrink: 0;
   padding: 0 1.25rem;
 }
 
-.panel-tabs :deep(.n-tab-pane) {
+.input-tabs :deep(.n-tab-pane) {
   flex: 1;
   min-height: 0;
   overflow: auto;
 }
 
-.panel-body {
+/* ---- 单标题 + 滚动区 ---- */
+.section-sticky-header {
+  flex-shrink: 0;
+  padding: 0.75rem 1.25rem 0;
+  font-size: 0.875rem;
+}
+
+.section-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.section-body {
   padding: 1rem 1.25rem;
+}
+
+.section-divider {
+  flex-shrink: 0;
+  height: 1px;
+  margin: 0 1.25rem;
+  background: var(--border);
 }
 </style>

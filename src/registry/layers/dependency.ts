@@ -1,18 +1,19 @@
 /**
  * 依赖层定义：无父级共用 schema；各子类型（children）拥有自己的
- * paramsSchema / configSchema / topologyDisplay，拓扑与表单均按 kind 使用子类型 schema。
- * client_only：仅一个节点，params/config 即 client；client_and_server：Server + Client 两节点组合，配置完全分开。
+ * constraintsSchema / objectivesSchema / tunablesSchema / topologyDisplay，
+ * 拓扑与表单均按 kind 使用子类型 schema。
+ * client_only：仅一个节点；client_and_server：Server + Client 两节点组合，配置完全分开。
  */
 
 import type { LayerDefinition, FormSchema, DependencyNodeTypeDefinition, CrossFieldRule } from '../spec'
 import { getByPath } from '../schemaBuild'
 
 // ---------- Redis 子类型（client_and_server：Server 与 Client 配置分开） ----------
-const redisServerParamsSchema: FormSchema = {
+const redisServerConstraintsSchema: FormSchema = {
   sections: [
     {
-      id: 'redis_server_params',
-      label: '核心参数 — Redis Server',
+      id: 'redis_server_constraints',
+      label: '环境约束 — Redis Server',
       fields: [
         { key: 'memoryGb', label: '内存容量 (GB)', type: 'number', default: 8, min: 0 },
         { key: 'shardCount', label: '分片数量', type: 'number', default: 1, min: 1 },
@@ -21,11 +22,11 @@ const redisServerParamsSchema: FormSchema = {
   ],
 }
 
-const redisClientConfigSchema: FormSchema = {
+const redisClientConstraintsSchema: FormSchema = {
   sections: [
     {
-      id: 'redis_client_config',
-      label: '核心配置 — Redis Client',
+      id: 'redis_client_constraints',
+      label: '环境约束 — Redis Client',
       fields: [
         {
           key: 'redisClient',
@@ -44,11 +45,11 @@ const redisClientConfigSchema: FormSchema = {
 }
 
 // ---------- Database 子类型（client_and_server） ----------
-const databaseServerParamsSchema: FormSchema = {
+const databaseServerConstraintsSchema: FormSchema = {
   sections: [
     {
-      id: 'database_server_params',
-      label: '核心参数 — Database Server',
+      id: 'database_server_constraints',
+      label: '环境约束 — Database Server',
       fields: [
         { key: 'engine', label: '引擎', type: 'string', default: 'MySQL', placeholder: 'MySQL' },
         { key: 'cpu', label: 'CPU', type: 'number', default: 8, min: 0 },
@@ -66,28 +67,28 @@ const redisChild: DependencyNodeTypeDefinition = {
   kind: 'redis',
   label: 'Redis',
   clientServer: 'client_and_server',
-  serverParamsSchema: redisServerParamsSchema,
-  clientConfigSchema: redisClientConfigSchema,
-  serverTopologyDisplay: { params: ['memoryGb', 'shardCount'] },
-  clientTopologyDisplay: { config: ['redisClient'] },
+  serverConstraintsSchema: redisServerConstraintsSchema,
+  clientConstraintsSchema: redisClientConstraintsSchema,
+  serverTopologyDisplay: { constraints: ['memoryGb', 'shardCount'] },
+  clientTopologyDisplay: { constraints: ['redisClient'] },
 }
 
 const databaseChild: DependencyNodeTypeDefinition = {
   kind: 'database',
   label: '数据库',
   clientServer: 'client_and_server',
-  serverParamsSchema: databaseServerParamsSchema,
+  serverConstraintsSchema: databaseServerConstraintsSchema,
   serverTopologyDisplay: {
-    params: ['engine', 'cpu', 'memoryGb', 'maxConnections'],
+    constraints: ['engine', 'cpu', 'memoryGb', 'maxConnections'],
   },
 }
 
 // ---------- 三方接口子类型（client_and_server：Server 与 Client 配置分开） ----------
-const httpApiServerParamsSchema: FormSchema = {
+const httpApiServerConstraintsSchema: FormSchema = {
   sections: [
     {
-      id: 'http_api_server_params',
-      label: '核心参数 — 三方接口 Server',
+      id: 'http_api_server_constraints',
+      label: '环境约束 — 三方接口 Server',
       fields: [
         {
           key: 'networkEnv',
@@ -101,6 +102,17 @@ const httpApiServerParamsSchema: FormSchema = {
           ],
         },
         { key: 'messageSizeBytes', label: '消息大小 (bytes)', type: 'number', default: 1024, min: 0 },
+      ],
+    },
+  ],
+}
+
+const httpApiServerObjectivesSchema: FormSchema = {
+  sections: [
+    {
+      id: 'http_api_server_objectives',
+      label: '负载目标 — 三方接口 Server',
+      fields: [
         { key: 'targetQps', label: '目标 QPS', type: 'number', default: 1000, min: 0 },
         { key: 'slaRtMs', label: 'SLA 响应时间 (ms)', type: 'number', default: 200, min: 0 },
       ],
@@ -108,11 +120,11 @@ const httpApiServerParamsSchema: FormSchema = {
   ],
 }
 
-const httpApiClientParamsSchema: FormSchema = {
+const httpApiClientConstraintsSchema: FormSchema = {
   sections: [
     {
-      id: 'http_api_client_params',
-      label: '核心参数 — HTTP Client',
+      id: 'http_api_client_constraints',
+      label: '环境约束 — HTTP Client',
       fields: [
         {
           key: 'clientType',
@@ -130,7 +142,7 @@ const httpApiClientParamsSchema: FormSchema = {
   ],
 }
 
-const httpApiClientConfigCrossRules: CrossFieldRule[] = [
+const httpApiClientTunablesCrossRules: CrossFieldRule[] = [
   {
     fieldKey: 'okhttp.maxRequestsPerHost',
     check: ({ formValues }) => {
@@ -151,11 +163,11 @@ const httpApiClientConfigCrossRules: CrossFieldRule[] = [
   },
 ]
 
-const httpApiClientConfigSchema: FormSchema = {
+const httpApiClientTunablesSchema: FormSchema = {
   sections: [
     {
-      id: 'http_api_client_config_java_http',
-      label: '核心配置 — Java HttpClient',
+      id: 'http_api_client_tunables_java_http',
+      label: '可调配置 — Java HttpClient',
       visibleWhen: { field: 'clientType', value: 'java_http' },
       fields: [
         {
@@ -173,8 +185,8 @@ const httpApiClientConfigSchema: FormSchema = {
       ],
     },
     {
-      id: 'http_api_client_config_okhttp',
-      label: '核心配置 — OkHttp',
+      id: 'http_api_client_tunables_okhttp',
+      label: '可调配置 — OkHttp',
       visibleWhen: { field: 'clientType', value: 'okhttp' },
       fields: [
         { key: 'okhttp.maxRequestsPerHost', label: 'Dispatcher.MaxRequestsPerHost', type: 'number', default: 5, min: 1 },
@@ -187,8 +199,8 @@ const httpApiClientConfigSchema: FormSchema = {
       ],
     },
     {
-      id: 'http_api_client_config_apache',
-      label: '核心配置 — Apache HttpClient',
+      id: 'http_api_client_tunables_apache',
+      label: '可调配置 — Apache HttpClient',
       visibleWhen: { field: 'clientType', value: 'apache' },
       fields: [
         { key: 'apache.maxConnTotal', label: 'MaxConnTotal', type: 'number', default: 25, min: 1 },
@@ -199,18 +211,19 @@ const httpApiClientConfigSchema: FormSchema = {
       ],
     },
   ],
-  crossRules: httpApiClientConfigCrossRules,
+  crossRules: httpApiClientTunablesCrossRules,
 }
 
 const httpApiChild: DependencyNodeTypeDefinition = {
   kind: 'http_api',
   label: '三方接口',
   clientServer: 'client_and_server',
-  serverParamsSchema: httpApiServerParamsSchema,
-  clientParamsSchema: httpApiClientParamsSchema,
-  clientConfigSchema: httpApiClientConfigSchema,
-  serverTopologyDisplay: { params: ['networkEnv', 'targetQps', 'slaRtMs'] },
-  clientTopologyDisplay: { params: ['clientType'] },
+  serverConstraintsSchema: httpApiServerConstraintsSchema,
+  serverObjectivesSchema: httpApiServerObjectivesSchema,
+  clientConstraintsSchema: httpApiClientConstraintsSchema,
+  clientTunablesSchema: httpApiClientTunablesSchema,
+  serverTopologyDisplay: { constraints: ['networkEnv'], objectives: ['targetQps', 'slaRtMs'] },
+  clientTopologyDisplay: { constraints: ['clientType'] },
 }
 
 export const dependencyLayer: LayerDefinition = {

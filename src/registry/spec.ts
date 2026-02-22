@@ -4,17 +4,17 @@
  * 约定：
  * - 层（Layer）：拓扑中的一类节点集合，如「客户端层」「依赖层」。有唯一 id、展示名、图标、可选数量上限等。
  * - 依赖层子类型（DependencyNodeType）：依赖层下的可拖入节点类型，如 Redis、数据库。有 kind、展示名。
- * - 属性配置：每层通过「表单 Schema」定义核心参数/核心配置的字段（名称、描述、类型、默认值等），由动态表单渲染，不硬编码。
+ * - 属性配置：每层通过「表单 Schema」定义环境约束 / 负载目标 / 可调配置的字段（名称、描述、类型、默认值等），由动态表单渲染，不硬编码。
  * - 扩展方式：通过 register 向注册表追加或覆盖定义，业务层统一从 registry 读取，不写死层/节点列表。
  */
 
 // ========== 校验类型 ==========
 
-/** 校验上下文：提供当前表单所有字段值及外部上下文（如 params -> config 的联动） */
+/** 校验上下文：提供当前表单所有字段值及外部上下文（如 constraints -> tunables 的联动） */
 export interface ValidationContext {
   /** 当前表单内所有字段值（可能是嵌套对象，通过 dot-path 写入） */
   formValues: Record<string, unknown>
-  /** 外部上下文，例如编辑核心配置时传入的同节点核心参数 */
+  /** 外部上下文，例如编辑可调配置时传入的同节点环境约束 */
   externalContext?: Record<string, unknown>
 }
 
@@ -56,7 +56,7 @@ export type SectionScope = 'generic' | 'redis' | 'database'
 
 /** 区块条件显示：当 context 中指定字段等于指定值时才渲染该区块 */
 export interface SectionVisibleWhen {
-  /** 字段 dot-path（在外部 context 对象中查找，如 params 中的 clientType） */
+  /** 字段 dot-path（在外部 context 对象中查找，如 constraints 中的 clientType） */
   field: string
   /** 匹配值：字段值等于此值时显示 */
   value: unknown
@@ -81,12 +81,16 @@ export interface FormSchema {
   crossRules?: CrossFieldRule[]
 }
 
-/** 拓扑图节点卡片上要展示的字段：来自核心参数/核心配置的 dot-path 列表 */
+/**
+ * 拓扑图节点卡片上要展示的字段：来自环境约束 / 负载目标 / 可调配置的 dot-path 列表
+ */
 export interface TopologyDisplayConfig {
-  /** 在卡片上展示的核心参数字段 key（dot-path，如 businessScenario、spec.vCpu） */
-  params?: string[]
-  /** 在卡片上展示的核心配置字段 key（dot-path） */
-  config?: string[]
+  /** 在卡片上展示的环境约束字段 key（dot-path，如 spec.vCpu） */
+  constraints?: string[]
+  /** 在卡片上展示的负载目标字段 key（dot-path，如 targetThroughputRps） */
+  objectives?: string[]
+  /** 在卡片上展示的可调配置字段 key（dot-path，如 gc、tomcatMaxThreads） */
+  tunables?: string[]
 }
 
 /**
@@ -118,16 +122,20 @@ export interface LayerDefinition {
   ioRules?: NodeIoRules
   /** 仅依赖层使用：该层下可拖入的子节点类型，无则层本身可拖（若 maxCount 允许） */
   children?: DependencyNodeTypeDefinition[]
-  /** 在拓扑图节点卡片上展示哪些参数/配置字段（key 为 paramsSchema/configSchema 中的 dot-path） */
+  /** 在拓扑图节点卡片上展示哪些字段（key 为对应 schema 中的 dot-path） */
   topologyDisplay?: TopologyDisplayConfig
-  /** 核心参数表单 Schema（字段名、描述、类型、默认值等）；有则用 buildFromSchema 生成 defaultParams */
-  paramsSchema?: FormSchema
-  /** 核心配置表单 Schema；有则用 buildFromSchema 生成 defaultConfig，无则本层无核心配置 */
-  configSchema?: FormSchema
-  /** 兼容：无 paramsSchema 时使用的默认参数（逐步迁移后可删） */
-  defaultParams?: unknown
-  /** 兼容：无 configSchema 时使用的默认配置（逐步迁移后可删） */
-  defaultConfig?: unknown
+  /** 环境约束表单 Schema：硬件/基础设施的物理边界，不能或很难改 */
+  constraintsSchema?: FormSchema
+  /** 负载目标表单 Schema：业务方的性能期望和负载画像 */
+  objectivesSchema?: FormSchema
+  /** 可调配置表单 Schema：基于约束和目标来决定的调优旋钮 */
+  tunablesSchema?: FormSchema
+  /** 兼容：无 constraintsSchema 时使用的默认环境约束（逐步迁移后可删） */
+  defaultConstraints?: unknown
+  /** 兼容：无 objectivesSchema 时使用的默认负载目标（逐步迁移后可删） */
+  defaultObjectives?: unknown
+  /** 兼容：无 tunablesSchema 时使用的默认可调配置（逐步迁移后可删） */
+  defaultTunables?: unknown
 }
 
 /** 依赖层子节点在拓扑中的角色：仅客户端 / 既有 client 又有 server（拓扑上为两个独立节点组合） */
@@ -141,19 +149,29 @@ export interface DependencyNodeTypeDefinition {
   clientServer: DependencyClientServer
   /** 该子类型的输入输出规则（覆盖依赖层的 ioRules） */
   ioRules?: NodeIoRules
-  /** client_only 时：核心参数 Schema；client_and_server 时：仅作备用，优先用 server/client 各自 schema */
-  paramsSchema?: FormSchema
-  /** client_only 时：核心配置 Schema；client_and_server 时：仅作备用 */
-  configSchema?: FormSchema
-  /** client_and_server 时：Server 侧核心参数 Schema */
-  serverParamsSchema?: FormSchema
-  /** client_and_server 时：Server 侧核心配置 Schema */
-  serverConfigSchema?: FormSchema
-  /** client_and_server 时：Client 侧核心参数 Schema */
-  clientParamsSchema?: FormSchema
-  /** client_and_server 时：Client 侧核心配置 Schema */
-  clientConfigSchema?: FormSchema
-  /** 该子类型在拓扑图卡片上展示的参数字段（client_only 用；client_and_server 时用 server/client 各自 topologyDisplay） */
+
+  /** client_only 时：环境约束 Schema；client_and_server 时：仅作备用 */
+  constraintsSchema?: FormSchema
+  /** client_only 时：负载目标 Schema；client_and_server 时：仅作备用 */
+  objectivesSchema?: FormSchema
+  /** client_only 时：可调配置 Schema；client_and_server 时：仅作备用 */
+  tunablesSchema?: FormSchema
+
+  /** client_and_server 时：Server 侧环境约束 Schema */
+  serverConstraintsSchema?: FormSchema
+  /** client_and_server 时：Server 侧负载目标 Schema */
+  serverObjectivesSchema?: FormSchema
+  /** client_and_server 时：Server 侧可调配置 Schema */
+  serverTunablesSchema?: FormSchema
+
+  /** client_and_server 时：Client 侧环境约束 Schema */
+  clientConstraintsSchema?: FormSchema
+  /** client_and_server 时：Client 侧负载目标 Schema */
+  clientObjectivesSchema?: FormSchema
+  /** client_and_server 时：Client 侧可调配置 Schema */
+  clientTunablesSchema?: FormSchema
+
+  /** 该子类型在拓扑图卡片上展示的字段（client_only 用；client_and_server 时用 server/client 各自 topologyDisplay） */
   topologyDisplay?: TopologyDisplayConfig
   /** client_and_server 时：Server 节点在拓扑上的展示字段 */
   serverTopologyDisplay?: TopologyDisplayConfig

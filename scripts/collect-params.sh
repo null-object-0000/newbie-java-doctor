@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# collect-params.sh — 一键采集容器/宿主核心参数，输出可直接导入的 topology JSON
+# collect-params.sh — 一键采集容器/宿主环境约束与可调配置，输出可直接导入的 topology JSON
 #
 # 远程一键执行：
 #   curl -fsSL https://raw.githubusercontent.com/null-object-0000/newbie-java-doctor/main/scripts/collect-params.sh | bash -s -- -o topology.json
@@ -11,8 +11,8 @@
 #   bash collect-params.sh --pretty     # 美化输出（需要 python3 或 jq）
 #
 # 采集范围：
-#   宿主容器层 — 核心参数（CPU/内存/架构/磁盘/网络/OS）+ 核心配置（sysctl/ulimit）
-#   运行时层   — 核心参数（JDK 版本）+ 核心配置（GC/JVM/Tomcat 从进程参数推断）
+#   宿主容器层 — 环境约束（CPU/内存/架构/磁盘/网络/OS）+ 可调配置（sysctl/ulimit）
+#   运行时层   — 环境约束（JDK 版本）+ 可调配置（GC/JVM/Tomcat 从进程参数推断）
 #
 # 导入方式：在 Web 页面点击「导入」按钮，选择生成的 JSON 文件即可。
 # ============================================================================
@@ -59,7 +59,7 @@ GC_DETECTED=false
 JVM_DETECTED=false
 TOMCAT_DETECTED=false
 
-# ── 宿主容器层 · 核心参数 ───────────────────────────────────────────────────
+# ── 宿主容器层 · 环境约束 ─────────────────────────────────────────────────────
 
 echo "[collect-params] 采集 CPU / 内存 / 架构..." >&2
 
@@ -158,7 +158,7 @@ fi
 # 内核版本
 KERNEL_VERSION=$(uname -r 2>/dev/null || echo "unknown")
 
-# ── 宿主容器层 · 核心配置 ───────────────────────────────────────────────────
+# ── 宿主容器层 · 可调配置 ─────────────────────────────────────────────────────
 
 echo "[collect-params] 采集内核参数 (sysctl / ulimit)..." >&2
 
@@ -313,13 +313,14 @@ cat << ENDJSON
       "nodeSource": "default",
       "x": 0,
       "y": 0,
-      "params": {
+      "constraints": {},
+      "objectives": {
         "businessScenario": "io",
         "concurrentUsers": 100,
         "targetThroughputRps": 500,
         "expectedFailureRatePercent": 0
       },
-      "config": {}
+      "tunables": {}
     },
     {
       "id": "n-host-default",
@@ -328,7 +329,7 @@ cat << ENDJSON
       "nodeSource": "default",
       "x": 0,
       "y": 250,
-      "params": {
+      "constraints": {
         "spec": {
           "vCpu": ${VCPU},
           "cpuFreqGhz": ${CPU_GHZ},
@@ -349,7 +350,8 @@ cat << ENDJSON
           "kernelVersion": "$(json_str "$KERNEL_VERSION")"
         }
       },
-      "config": {
+      "objectives": {},
+      "tunables": {
         "net": {
           "tcpTwReuse": $(to_int "$TCP_TW_REUSE"),
           "ipLocalPortRange": "$(json_str "$IP_LOCAL_PORT_RANGE")",
@@ -369,12 +371,14 @@ cat << ENDJSON
       "nodeSource": "default",
       "x": 0,
       "y": 500,
-      "params": {
-        "jdkVersion": "$(json_str "$JDK_VERSION")",
+      "constraints": {
+        "jdkVersion": "$(json_str "$JDK_VERSION")"
+      },
+      "objectives": {
         "logLinesPerRequest": 5,
         "logSizeBytesPerRequest": 512
       },
-      "config": {
+      "tunables": {
         "gc": "$(json_str "$GC_TYPE")",
         "jvmOptions": "$(json_str "$JVM_OPTIONS")",
         "virtualThreadsEnabled": ${VIRTUAL_THREADS},
@@ -416,7 +420,7 @@ ENDJSON
 echo "┌─────────────────────────────────────────────────────────" >&2
 echo "│ 容器参数采集完成" >&2
 echo "├─────────────────────────────────────────────────────────" >&2
-echo "│ 宿主容器层 · 核心参数" >&2
+echo "│ 宿主容器层 · 环境约束" >&2
 echo "│   vCPU:     ${VCPU}" >&2
 if $CPU_FREQ_DETECTED; then
   echo "│   频率:     ${CPU_GHZ} GHz" >&2
@@ -432,7 +436,7 @@ fi
 echo "│   OS:       ${OS_VERSION}" >&2
 echo "│   Kernel:   ${KERNEL_VERSION}" >&2
 echo "│" >&2
-echo "│ 宿主容器层 · 核心配置" >&2
+echo "│ 宿主容器层 · 可调配置" >&2
 echo "│   tcp_tw_reuse:        ${TCP_TW_REUSE}" >&2
 echo "│   ip_local_port_range: ${IP_LOCAL_PORT_RANGE}" >&2
 echo "│   tcp_max_tw_buckets:  ${TCP_MAX_TW_BUCKETS}" >&2

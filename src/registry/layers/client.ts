@@ -1,14 +1,14 @@
 /**
- * 客户端层定义：核心参数 Schema 与层元信息
+ * 客户端层定义：负载目标 Schema 与层元信息
  */
 
 import type { LayerDefinition, FormSchema } from '../spec'
 
-const paramsSchema: FormSchema = {
+const objectivesSchema: FormSchema = {
   sections: [
     {
       id: 'main',
-      label: '核心参数',
+      label: '负载目标',
       fields: [
         {
           key: 'businessScenario',
@@ -47,8 +47,8 @@ export const clientLayer: LayerDefinition = {
     hasOutput: true,
     allowedOutputLayers: ['access', 'host'],
   },
-  paramsSchema,
+  objectivesSchema,
   topologyDisplay: {
-    params: ['businessScenario', 'concurrentUsers', 'targetThroughputRps'],
+    objectives: ['businessScenario', 'concurrentUsers', 'targetThroughputRps'],
   },
 }

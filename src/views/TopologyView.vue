@@ -11,6 +11,7 @@ import {
   getEdgeFieldLabel,
   getEdgeValueLabel,
 } from '@/registry/layers'
+import type { SchemaCategory } from '@/registry/layers'
 import { getByPath } from '@/registry/schemaBuild'
 import { NButton, NButtonGroup, NCard, NCode, NEmpty, NText, useDialog, useMessage } from 'naive-ui'
 import TopologyDiagram from '@/components/TopologyDiagram.vue'
@@ -24,8 +25,9 @@ const dialog = useDialog()
 const store = useTopologyStore()
 const {
   topology,
-  nodeParams,
-  nodeConfig,
+  nodeConstraints,
+  nodeObjectives,
+  nodeTunables,
   edgeParams,
   canUndo,
   canRedo,
@@ -39,23 +41,30 @@ const nodeDisplayFields = computed(() => {
     const kind = node.layerId === 'dependency' ? node.dependencyKind : undefined
     const role = node.layerId === 'dependency' ? node.dependencyRole : undefined
     const cfg = getTopologyDisplayConfig(layerId, kind, role)
-    if (!cfg || (!cfg.params?.length && !cfg.config?.length)) continue
-    const params = nodeParams.value[node.id] ?? {}
-    const config = nodeConfig.value[node.id] ?? {}
+    if (!cfg || (!cfg.constraints?.length && !cfg.objectives?.length && !cfg.tunables?.length)) continue
+
+    const constraints = nodeConstraints.value[node.id] ?? {}
+    const objectives = nodeObjectives.value[node.id] ?? {}
+    const tunables = nodeTunables.value[node.id] ?? {}
+
     const rows: { label: string; displayText: string }[] = []
-    for (const key of cfg.params ?? []) {
-      const value = getByPath(params, key)
-      const label = getTopologyDisplayFieldLabel(layerId, 'params', key, kind, role)
-      const displayText = getTopologyDisplayValueLabel(layerId, 'params', key, value, kind, role)
-      rows.push({ label, displayText })
+
+    const categories: { keys: string[]; source: SchemaCategory; data: Record<string, unknown> }[] = [
+      { keys: cfg.constraints ?? [], source: 'constraints', data: constraints },
+      { keys: cfg.objectives ?? [], source: 'objectives', data: objectives },
+      { keys: cfg.tunables ?? [], source: 'tunables', data: tunables },
+    ]
+
+    for (const { keys, source, data } of categories) {
+      for (const key of keys) {
+        const value = getByPath(data, key)
+        rows.push({
+          label: getTopologyDisplayFieldLabel(layerId, source, key, kind, role),
+          displayText: getTopologyDisplayValueLabel(layerId, source, key, value, kind, role),
+        })
+      }
     }
-    for (const key of cfg.config ?? []) {
-      const value = getByPath(config, key)
-      rows.push({
-        label: getTopologyDisplayFieldLabel(layerId, 'config', key, kind, role),
-        displayText: getTopologyDisplayValueLabel(layerId, 'config', key, value, kind, role),
-      })
-    }
+
     if (rows.length) out[node.id] = rows
   }
   return out
@@ -87,18 +96,19 @@ const edgeDisplayFields = computed(() => {
 type MiddleViewMode = 'graph' | 'json'
 const middleViewMode = ref<MiddleViewMode>('graph')
 
-function getNodeParamsConfig(node: TopologyNode): { params: Record<string, unknown>; config: Record<string, unknown> } {
+function getNodeData(node: TopologyNode): { constraints: Record<string, unknown>; objectives: Record<string, unknown>; tunables: Record<string, unknown> } {
   return {
-    params: { ...(nodeParams.value[node.id] ?? {}) },
-    config: { ...(nodeConfig.value[node.id] ?? {}) },
+    constraints: { ...(nodeConstraints.value[node.id] ?? {}) },
+    objectives: { ...(nodeObjectives.value[node.id] ?? {}) },
+    tunables: { ...(nodeTunables.value[node.id] ?? {}) },
   }
 }
 
 const topologyJson = computed(() => {
   const payload = {
     nodes: topology.value.nodes.map((node) => {
-      const { params, config } = getNodeParamsConfig(node)
-      return { ...node, params, config }
+      const { constraints, objectives, tunables } = getNodeData(node)
+      return { ...node, constraints, objectives, tunables }
     }),
     edges: topology.value.edges.map((edge) => {
       const params = edgeParams.value[edge.id]
@@ -163,7 +173,7 @@ function handleFileImport(event: Event) {
   reader.readAsText(file)
 }
 
-/** 当前编辑的节点（点击拓扑图节点时设置；依赖层需据此取 kind 与节点 params/config） */
+/** 当前编辑的节点（点击拓扑图节点时设置；依赖层需据此取 kind 与节点数据） */
 const editingNode = ref<TopologyNode | null>(null)
 /** 当前编辑的连线（点击拓扑图连线时设置） */
 const editingEdge = ref<TopologyEdge | null>(null)
@@ -205,7 +215,6 @@ function onEdgeSelect(edge: TopologyEdge | null) {
 }
 
 function onRemove(nodeId: string) {
-  // 如果删除的是正在编辑的节点，清空编辑状态
   if (editingNode.value?.id === nodeId) {
     editingNode.value = null
   }

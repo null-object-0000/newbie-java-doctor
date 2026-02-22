@@ -1,11 +1,11 @@
 /**
- * 宿主容器层定义：核心参数 / 核心配置 Schema 与层元信息
+ * 宿主容器层定义：环境约束 / 可调配置 Schema 与层元信息
  */
 
 import type { LayerDefinition, FormSchema, CrossFieldRule, FieldValidator } from '../spec'
 import { getByPath } from '../schemaBuild'
 
-const paramsSchema: FormSchema = {
+const constraintsSchema: FormSchema = {
   sections: [
     {
       id: 'spec',
@@ -78,7 +78,7 @@ const validatePortRange: FieldValidator = (value) => {
   if (start >= end) return `起始端口 (${start}) 应小于结束端口 (${end})`
 }
 
-const configCrossRules: CrossFieldRule[] = [
+const tunablesCrossRules: CrossFieldRule[] = [
   {
     fieldKey: 'fs.ulimitN',
     check: ({ formValues }) => {
@@ -99,11 +99,11 @@ const configCrossRules: CrossFieldRule[] = [
   },
 ]
 
-const configSchema: FormSchema = {
+const tunablesSchema: FormSchema = {
   sections: [
     {
       id: 'net',
-      label: '核心配置（可调优）— net',
+      label: '可调配置 — net',
       fields: [
         {
           key: 'net.tcpTwReuse',
@@ -130,7 +130,7 @@ const configSchema: FormSchema = {
     },
     {
       id: 'fs',
-      label: '核心配置（可调优）— fs',
+      label: '可调配置 — fs',
       fields: [
         { key: 'fs.ulimitN', label: 'ulimit -n', type: 'number', default: 65535, min: 0 },
         { key: 'fs.fsNrOpen', label: 'fs.nr_open', type: 'number', default: 65535, min: 0 },
@@ -138,7 +138,7 @@ const configSchema: FormSchema = {
       ],
     },
   ],
-  crossRules: configCrossRules,
+  crossRules: tunablesCrossRules,
 }
 
 export const hostLayer: LayerDefinition = {
@@ -147,9 +147,9 @@ export const hostLayer: LayerDefinition = {
   icon: 'H',
   theme: 'green',
   maxCount: 1,
-  paramsSchema,
-  configSchema,
+  constraintsSchema,
+  tunablesSchema,
   topologyDisplay: {
-    params: ['spec.vCpu', 'spec.memoryGb', 'spec.architecture'],
+    constraints: ['spec.vCpu', 'spec.memoryGb', 'spec.architecture'],
   },
 }

@@ -1,17 +1,28 @@
 /**
- * 运行时层定义：核心参数 / 核心配置 Schema 与层元信息
+ * 运行时层定义：环境约束 / 负载目标 / 可调配置 Schema 与层元信息
  */
 
 import type { LayerDefinition, FormSchema, CrossFieldRule } from '../spec'
 import { getByPath } from '../schemaBuild'
 
-const paramsSchema: FormSchema = {
+const constraintsSchema: FormSchema = {
   sections: [
     {
-      id: 'main',
-      label: '核心参数',
+      id: 'runtime_env',
+      label: '运行时环境',
       fields: [
         { key: 'jdkVersion', label: 'JDK 版本', type: 'string', default: '21', placeholder: '21' },
+      ],
+    },
+  ],
+}
+
+const objectivesSchema: FormSchema = {
+  sections: [
+    {
+      id: 'workload',
+      label: '负载画像',
+      fields: [
         { key: 'logLinesPerRequest', label: '单次请求日志条数', type: 'number', default: 5, min: 0 },
         { key: 'logSizeBytesPerRequest', label: '单次请求日志大小 (bytes)', type: 'number', default: 512, min: 0 },
       ],
@@ -19,7 +30,7 @@ const paramsSchema: FormSchema = {
   ],
 }
 
-const configCrossRules: CrossFieldRule[] = [
+const tunablesCrossRules: CrossFieldRule[] = [
   {
     fieldKey: 'tomcatMaxConnections',
     check: ({ formValues }) => {
@@ -57,11 +68,11 @@ const configCrossRules: CrossFieldRule[] = [
   },
 ]
 
-const configSchema: FormSchema = {
+const tunablesSchema: FormSchema = {
   sections: [
     {
       id: 'runtime',
-      label: '核心配置 — 运行时 / Web 容器',
+      label: '可调配置 — 运行时 / Web 容器',
       fields: [
         { key: 'gc', label: '垃圾回收器', type: 'string', default: 'G1GC', placeholder: 'G1GC' },
         { key: 'jvmOptions', label: 'JVM 配置', type: 'string', default: '-Xms4g -Xmx4g', placeholder: '-Xms4g -Xmx4g' },
@@ -83,7 +94,7 @@ const configSchema: FormSchema = {
     },
     {
       id: 'logback',
-      label: '核心配置 — Logback',
+      label: '可调配置 — Logback',
       fields: [
         { key: 'logbackMaxFileSize', label: 'RollingFileAppender maxFileSize', type: 'string', default: '100MB', placeholder: '100MB' },
         { key: 'logbackMaxHistory', label: 'maxHistory', type: 'number', default: 30, min: 0 },
@@ -103,7 +114,7 @@ const configSchema: FormSchema = {
       ],
     },
   ],
-  crossRules: configCrossRules,
+  crossRules: tunablesCrossRules,
 }
 
 export const runtimeLayer: LayerDefinition = {
@@ -112,10 +123,11 @@ export const runtimeLayer: LayerDefinition = {
   icon: 'J',
   theme: 'orange',
   maxCount: 1,
-  paramsSchema,
-  configSchema,
+  constraintsSchema,
+  objectivesSchema,
+  tunablesSchema,
   topologyDisplay: {
-    params: ['jdkVersion'],
-    config: ['gc', 'tomcatMaxThreads'],
+    constraints: ['jdkVersion'],
+    tunables: ['gc', 'tomcatMaxThreads'],
   },
 }

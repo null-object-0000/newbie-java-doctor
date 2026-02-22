@@ -2,7 +2,8 @@
 import { computed } from 'vue'
 import { useTopologyStore } from '@/stores/topology'
 import { storeToRefs } from 'pinia'
-import { getParamsSchema, getConfigSchema } from '@/registry/layers'
+import { getConstraintsSchema, getObjectivesSchema, getTunablesSchema } from '@/registry/layers'
+import type { SchemaCategory } from '@/registry/layers'
 import { NEmpty } from 'naive-ui'
 import DynamicForm from '@/components/DynamicForm.vue'
 import type { LayerId } from '@/types/layers'
@@ -10,27 +11,27 @@ import type { TopologyNode } from '@/types/layers'
 
 const props = defineProps<{
   layerId: LayerId
-  section: 'params' | 'config'
+  section: SchemaCategory
   editingNode?: TopologyNode | null
 }>()
 
 const store = useTopologyStore()
-const { nodeParams, nodeConfig } = storeToRefs(store)
+const { nodeConstraints, nodeObjectives, nodeTunables } = storeToRefs(store)
 
 const schema = computed(() => {
   const kind = props.layerId === 'dependency' ? props.editingNode?.dependencyKind : undefined
   const role = props.layerId === 'dependency' ? props.editingNode?.dependencyRole : undefined
-  return props.section === 'params'
-    ? getParamsSchema(props.layerId, kind, role)
-    : getConfigSchema(props.layerId, kind, role)
+  if (props.section === 'constraints') return getConstraintsSchema(props.layerId, kind, role)
+  if (props.section === 'objectives') return getObjectivesSchema(props.layerId, kind, role)
+  return getTunablesSchema(props.layerId, kind, role)
 })
 
 const model = computed(() => {
   const nodeId = props.editingNode?.id
   if (!nodeId) return {}
-  return (props.section === 'params'
-    ? nodeParams.value[nodeId]
-    : nodeConfig.value[nodeId]) ?? {}
+  if (props.section === 'constraints') return nodeConstraints.value[nodeId] ?? {}
+  if (props.section === 'objectives') return nodeObjectives.value[nodeId] ?? {}
+  return nodeTunables.value[nodeId] ?? {}
 })
 
 const resetHandler = computed(() => {
@@ -40,13 +41,19 @@ const resetHandler = computed(() => {
 })
 
 const formContext = computed(() => {
-  if (props.section !== 'config') return undefined
+  if (props.section !== 'tunables') return undefined
   const nodeId = props.editingNode?.id
   if (!nodeId) return undefined
-  return nodeParams.value[nodeId] ?? {}
+  return nodeConstraints.value[nodeId] ?? {}
 })
 
 const showReset = computed(() => !!resetHandler.value)
+
+const emptyDescription = computed(() => {
+  if (props.section === 'constraints') return '该节点无环境约束'
+  if (props.section === 'objectives') return '该节点无负载目标'
+  return '该节点无可调配置'
+})
 </script>
 
 <template>
@@ -55,7 +62,7 @@ const showReset = computed(() => !!resetHandler.value)
       <DynamicForm :schema="schema" :model="model" :context="formContext" :show-reset="showReset" :before-change="() => store.pushState?.()"
         @reset="resetHandler?.()" />
     </template>
-    <NEmpty v-else :description="section === 'params' ? '该节点无核心参数' : '该节点无核心配置'" class="section-empty" />
+    <NEmpty v-else :description="emptyDescription" class="section-empty" />
   </div>
 </template>
 

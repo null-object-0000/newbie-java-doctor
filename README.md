@@ -9,7 +9,7 @@
 
 ## 一键采集容器参数
 
-在目标容器（Linux）上执行以下命令，即可自动采集宿主容器层 + 运行时层的核心参数与配置，生成可直接导入的 JSON 文件。
+在目标容器（Linux）上执行以下命令，即可自动采集宿主容器层 + 运行时层的环境约束与可调配置，生成可直接导入的 JSON 文件。
 
 ### 远程执行
 
@@ -37,10 +37,10 @@ bash scripts/collect-params.sh -o topology.json
 
 | 层 | 类别 | 采集项 |
 |---|---|---|
-| 宿主容器层 | 核心参数 | vCPU、单核频率、内存、架构、磁盘类型、NIC 带宽、OS 版本、内核版本 |
-| 宿主容器层 | 核心配置 | `tcp_tw_reuse`、`ip_local_port_range`、`tcp_max_tw_buckets`、`ulimit -n`、`fs.nr_open`、`fs.file-max` |
-| 运行时层 | 核心参数 | JDK 版本 |
-| 运行时层 | 核心配置 | GC 类型、JVM 启动参数、Tomcat 线程/连接配置（从进程参数 + Spring 配置文件推断） |
+| 宿主容器层 | 环境约束 | vCPU、单核频率、内存、架构、磁盘类型、NIC 带宽、OS 版本、内核版本 |
+| 宿主容器层 | 可调配置 | `tcp_tw_reuse`、`ip_local_port_range`、`tcp_max_tw_buckets`、`ulimit -n`、`fs.nr_open`、`fs.file-max` |
+| 运行时层 | 环境约束 | JDK 版本 |
+| 运行时层 | 可调配置 | GC 类型、JVM 启动参数、Tomcat 线程/连接配置（从进程参数 + Spring 配置文件推断） |
 
 ### 导入方式
 
@@ -48,4 +48,4 @@ bash scripts/collect-params.sh -o topology.json
 2. 打开 Web 页面，点击右上角 **「导入」** 按钮
 3. 选择 JSON 文件即可
 
-> **提示**：IOPS / 磁盘吞吐量 / PPS 等难以自动探测的参数使用默认值，客户端层参数（并发数、目标吞吐量等）属于压测目标需手动设置，导入后均可在页面上调整。
+> **提示**：IOPS / 磁盘吞吐量 / PPS 等难以自动探测的参数使用默认值，客户端层的负载目标（并发数、目标吞吐量等）属于业务期望需手动设置，导入后均可在页面上调整。

@@ -2,7 +2,7 @@
  * 层注册表入口：从各层文件组装默认层列表，维护可变注册表与只读 API
  *
  * 使用方式：
- * - 只读：getLayers()、getLayerById()、getParamsSchema()、getDefaultParams() 等
+ * - 只读：getLayers()、getLayerById()、getConstraintsSchema()、getDefaultConstraints() 等
  * - 扩展：registerLayer(def)、registerDependencyNodeType(def)
  */
 
@@ -50,16 +50,18 @@ const defaultLayers: LayerDefinition[] = [
 const layers: LayerDefinition[] = defaultLayers.map((l) => deepClone(l))
 let layerOrder: LayerOrder = [...DEFAULT_LAYER_ORDER]
 
-/** 注册或覆盖一层（同 id 覆盖）；paramsSchema/configSchema 或 defaultParams/defaultConfig 会深拷贝存储 */
+/** 注册或覆盖一层（同 id 覆盖）；schema 与 default* 会深拷贝存储 */
 export const registerLayer: RegisterLayer = (def) => {
   const idx = layers.findIndex((l) => l.id === def.id)
   const next: LayerDefinition = {
     ...def,
     children: def.children ? [...def.children] : undefined,
-    paramsSchema: def.paramsSchema ? deepClone(def.paramsSchema) : undefined,
-    configSchema: def.configSchema ? deepClone(def.configSchema) : undefined,
-    defaultParams: def.defaultParams != null ? deepClone(def.defaultParams) : undefined,
-    defaultConfig: def.defaultConfig != null ? deepClone(def.defaultConfig) : undefined,
+    constraintsSchema: def.constraintsSchema ? deepClone(def.constraintsSchema) : undefined,
+    objectivesSchema: def.objectivesSchema ? deepClone(def.objectivesSchema) : undefined,
+    tunablesSchema: def.tunablesSchema ? deepClone(def.tunablesSchema) : undefined,
+    defaultConstraints: def.defaultConstraints != null ? deepClone(def.defaultConstraints) : undefined,
+    defaultObjectives: def.defaultObjectives != null ? deepClone(def.defaultObjectives) : undefined,
+    defaultTunables: def.defaultTunables != null ? deepClone(def.defaultTunables) : undefined,
   }
   if (idx >= 0) {
     layers[idx] = next
@@ -291,95 +293,135 @@ export function getDependencyKindLabels(): Record<string, string> {
 /** 依赖层节点角色：client_and_server 时按 role 取 server/client 各自 schema */
 export type DependencyRole = 'client' | 'server'
 
+/** 属性分类 */
+export type SchemaCategory = 'constraints' | 'objectives' | 'tunables'
+
 function getDependencySchemaByRole(
   child: DependencyNodeTypeDefinition | undefined,
   role: DependencyRole | undefined,
-  kind: 'params' | 'config'
+  category: SchemaCategory
 ): FormSchema | undefined {
   if (!child) return undefined
   const isServer = role === 'server'
   const isClient = role === 'client'
   if (child.clientServer === 'client_and_server') {
-    if (kind === 'params') return isServer ? child.serverParamsSchema : isClient ? child.clientParamsSchema : undefined
-    return isServer ? child.serverConfigSchema : isClient ? child.clientConfigSchema : undefined
+    if (category === 'constraints') return isServer ? child.serverConstraintsSchema : isClient ? child.clientConstraintsSchema : undefined
+    if (category === 'objectives') return isServer ? child.serverObjectivesSchema : isClient ? child.clientObjectivesSchema : undefined
+    return isServer ? child.serverTunablesSchema : isClient ? child.clientTunablesSchema : undefined
   }
-  return kind === 'params' ? child.paramsSchema : child.configSchema
+  if (category === 'constraints') return child.constraintsSchema
+  if (category === 'objectives') return child.objectivesSchema
+  return child.tunablesSchema
 }
 
-/** 该层核心参数表单 Schema（只读）。依赖层需传 dependencyKind；client_and_server 时传 dependencyRole 取 server/client 各自 schema */
-export function getParamsSchema(
+/** 该层环境约束表单 Schema（只读）。依赖层需传 dependencyKind；client_and_server 时传 dependencyRole 取 server/client 各自 schema */
+export function getConstraintsSchema(
   layerId: string,
   dependencyKind?: string,
   dependencyRole?: DependencyRole
 ): FormSchema | undefined {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    const schema = getDependencySchemaByRole(child, dependencyRole, 'params')
+    const schema = getDependencySchemaByRole(child, dependencyRole, 'constraints')
     return schema ? deepClone(schema) : undefined
   }
   const layer = getLayerById(layerId)
-  return layer?.paramsSchema ? deepClone(layer.paramsSchema) : undefined
+  return layer?.constraintsSchema ? deepClone(layer.constraintsSchema) : undefined
 }
 
-/** 该层核心配置表单 Schema（只读）。依赖层需传 dependencyKind；client_and_server 时传 dependencyRole 取 server/client 各自 schema */
-export function getConfigSchema(
+/** 该层负载目标表单 Schema（只读）。依赖层需传 dependencyKind；client_and_server 时传 dependencyRole 取 server/client 各自 schema */
+export function getObjectivesSchema(
   layerId: string,
   dependencyKind?: string,
   dependencyRole?: DependencyRole
 ): FormSchema | undefined {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    const schema = getDependencySchemaByRole(child, dependencyRole, 'config')
+    const schema = getDependencySchemaByRole(child, dependencyRole, 'objectives')
     return schema ? deepClone(schema) : undefined
   }
   const layer = getLayerById(layerId)
-  return layer?.configSchema ? deepClone(layer.configSchema) : undefined
+  return layer?.objectivesSchema ? deepClone(layer.objectivesSchema) : undefined
 }
 
-/** 该层核心参数默认值（深拷贝）。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
-export function getDefaultParams(
+/** 该层可调配置表单 Schema（只读）。依赖层需传 dependencyKind；client_and_server 时传 dependencyRole 取 server/client 各自 schema */
+export function getTunablesSchema(
+  layerId: string,
+  dependencyKind?: string,
+  dependencyRole?: DependencyRole
+): FormSchema | undefined {
+  if (layerId === 'dependency' && dependencyKind) {
+    const child = getDependencyNodeType(dependencyKind)
+    const schema = getDependencySchemaByRole(child, dependencyRole, 'tunables')
+    return schema ? deepClone(schema) : undefined
+  }
+  const layer = getLayerById(layerId)
+  return layer?.tunablesSchema ? deepClone(layer.tunablesSchema) : undefined
+}
+
+/** 该层环境约束默认值（深拷贝）。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
+export function getDefaultConstraints(
   layerId: string,
   dependencyKind?: string,
   dependencyRole?: DependencyRole
 ): unknown {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    const schema = getDependencySchemaByRole(child, dependencyRole, 'params')
+    const schema = getDependencySchemaByRole(child, dependencyRole, 'constraints')
     if (schema) return buildFromSchema(schema)
     return {}
   }
   const layer = getLayerById(layerId)
   if (!layer) return undefined
-  if (layer.paramsSchema) return buildFromSchema(layer.paramsSchema) as Record<string, unknown>
-  if (layer.defaultParams != null) return deepClone(layer.defaultParams)
+  if (layer.constraintsSchema) return buildFromSchema(layer.constraintsSchema) as Record<string, unknown>
+  if (layer.defaultConstraints != null) return deepClone(layer.defaultConstraints)
   return undefined
 }
 
-/** 该层核心配置默认值（深拷贝）。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
-export function getDefaultConfig(
+/** 该层负载目标默认值（深拷贝）。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
+export function getDefaultObjectives(
   layerId: string,
   dependencyKind?: string,
   dependencyRole?: DependencyRole
 ): unknown {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    const schema = getDependencySchemaByRole(child, dependencyRole, 'config')
+    const schema = getDependencySchemaByRole(child, dependencyRole, 'objectives')
     if (schema) return buildFromSchema(schema)
     return {}
   }
   const layer = getLayerById(layerId)
   if (!layer) return undefined
-  if (layer.configSchema) return buildFromSchema(layer.configSchema)
-  if (layer.defaultConfig != null) return deepClone(layer.defaultConfig)
+  if (layer.objectivesSchema) return buildFromSchema(layer.objectivesSchema) as Record<string, unknown>
+  if (layer.defaultObjectives != null) return deepClone(layer.defaultObjectives)
   return undefined
 }
 
-/** 该层在拓扑图卡片上要展示的参数/配置 key 列表。依赖层需传 dependencyKind、dependencyRole（client_and_server 时取 server/client 各自 topologyDisplay） */
+/** 该层可调配置默认值（深拷贝）。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
+export function getDefaultTunables(
+  layerId: string,
+  dependencyKind?: string,
+  dependencyRole?: DependencyRole
+): unknown {
+  if (layerId === 'dependency' && dependencyKind) {
+    const child = getDependencyNodeType(dependencyKind)
+    const schema = getDependencySchemaByRole(child, dependencyRole, 'tunables')
+    if (schema) return buildFromSchema(schema)
+    return {}
+  }
+  const layer = getLayerById(layerId)
+  if (!layer) return undefined
+  if (layer.tunablesSchema) return buildFromSchema(layer.tunablesSchema)
+  if (layer.defaultTunables != null) return deepClone(layer.defaultTunables)
+  return undefined
+}
+
+/** 该层在拓扑图卡片上要展示的字段 key 列表。依赖层需传 dependencyKind、dependencyRole（client_and_server 时取 server/client 各自 topologyDisplay） */
 export function getTopologyDisplayConfig(
   layerId: string,
   dependencyKind?: string,
   dependencyRole?: DependencyRole
-): { params: string[]; config: string[] } | undefined {
+): { constraints: string[]; objectives: string[]; tunables: string[] } | undefined {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
     const disp =
@@ -388,15 +430,16 @@ export function getTopologyDisplayConfig(
         : child?.clientServer === 'client_and_server' && dependencyRole === 'client'
           ? child.clientTopologyDisplay
           : child?.topologyDisplay
-    if (!disp || (!disp.params?.length && !disp.config?.length)) return undefined
-    return { params: disp.params ?? [], config: disp.config ?? [] }
+    if (!disp || (!disp.constraints?.length && !disp.objectives?.length && !disp.tunables?.length)) return undefined
+    return { constraints: disp.constraints ?? [], objectives: disp.objectives ?? [], tunables: disp.tunables ?? [] }
   }
   const layer = getLayerById(layerId)
   const disp = layer?.topologyDisplay
-  if (!disp || (!disp.params?.length && !disp.config?.length)) return undefined
+  if (!disp || (!disp.constraints?.length && !disp.objectives?.length && !disp.tunables?.length)) return undefined
   return {
-    params: disp.params ?? [],
-    config: disp.config ?? [],
+    constraints: disp.constraints ?? [],
+    objectives: disp.objectives ?? [],
+    tunables: disp.tunables ?? [],
   }
 }
 
@@ -416,28 +459,30 @@ function findFieldLabelInSchema(schema: FormSchema | undefined, key: string): st
   return field?.label ?? key
 }
 
-/** 该层某参数/配置字段在拓扑图上的展示名。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
+/** 该层某字段在拓扑图上的展示名。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
 export function getTopologyDisplayFieldLabel(
   layerId: string,
-  source: 'params' | 'config',
+  source: SchemaCategory,
   key: string,
   dependencyKind?: string,
   dependencyRole?: DependencyRole
 ): string {
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    const schema = getDependencySchemaByRole(child, dependencyRole, source === 'params' ? 'params' : 'config')
+    const schema = getDependencySchemaByRole(child, dependencyRole, source)
     return findFieldLabelInSchema(schema, key)
   }
   const layer = getLayerById(layerId)
-  const schema = source === 'params' ? layer?.paramsSchema : layer?.configSchema
+  const schema = source === 'constraints' ? layer?.constraintsSchema
+    : source === 'objectives' ? layer?.objectivesSchema
+      : layer?.tunablesSchema
   return findFieldLabelInSchema(schema, key)
 }
 
 /** 将字段值格式化为拓扑图展示文案。依赖层需传 dependencyKind、dependencyRole（client_and_server 时） */
 export function getTopologyDisplayValueLabel(
   layerId: string,
-  source: 'params' | 'config',
+  source: SchemaCategory,
   key: string,
   value: unknown,
   dependencyKind?: string,
@@ -446,10 +491,12 @@ export function getTopologyDisplayValueLabel(
   let schema: FormSchema | undefined
   if (layerId === 'dependency' && dependencyKind) {
     const child = getDependencyNodeType(dependencyKind)
-    schema = getDependencySchemaByRole(child, dependencyRole, source === 'params' ? 'params' : 'config')
+    schema = getDependencySchemaByRole(child, dependencyRole, source)
   } else {
     const layer = getLayerById(layerId)
-    schema = source === 'params' ? layer?.paramsSchema : layer?.configSchema
+    schema = source === 'constraints' ? layer?.constraintsSchema
+      : source === 'objectives' ? layer?.objectivesSchema
+        : layer?.tunablesSchema
   }
   const field = findFieldInSchema(schema, key)
 
@@ -467,4 +514,3 @@ export function getTopologyDisplayValueLabel(
   }
   return String(value)
 }
-

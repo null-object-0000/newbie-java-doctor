@@ -1,10 +1,10 @@
 /**
- * 接入网关层定义：核心参数 Schema 与层元信息
+ * 接入网关层定义：环境约束 Schema 与层元信息
  */
 
 import type { LayerDefinition, FormSchema } from '../spec'
 
-const paramsSchema: FormSchema = {
+const constraintsSchema: FormSchema = {
   sections: [
     {
       id: 'main',
@@ -35,8 +35,8 @@ export const accessLayer: LayerDefinition = {
     allowedInputLayers: ['client'],
     allowedOutputLayers: ['host', 'runtime'],
   },
-  paramsSchema,
+  constraintsSchema,
   topologyDisplay: {
-    params: ['nodes'],
+    constraints: ['nodes'],
   },
 }
