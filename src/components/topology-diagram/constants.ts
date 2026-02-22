@@ -26,12 +26,18 @@ export interface DisplayField {
   displayText: string
 }
 
+export interface NodeStatusInfo {
+  status: 'ok' | 'warning' | 'error'
+  summary: string
+}
+
 export interface SyncData {
   nodes: TopologyNode[]
   edges: TopologyEdge[]
   nodeDisplayFields: Record<string, DisplayField[]>
   edgeDisplayFields: Record<string, DisplayField[]>
   nodePortConfig: Record<string, { hasInput: boolean; hasOutput: boolean }>
+  nodeStatusMap: Record<string, NodeStatusInfo>
   selectedNodeId: string | null
 }
 

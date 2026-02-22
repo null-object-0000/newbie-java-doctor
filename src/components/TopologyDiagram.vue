@@ -8,6 +8,8 @@ import { useGraphDnd } from './topology-diagram/useGraphDnd'
 import { useGraphContextMenu } from './topology-diagram/useGraphContextMenu'
 
 // ========== Props ==========
+import type { NodeStatusInfo } from './topology-diagram/constants'
+
 const props = withDefaults(
   defineProps<{
     nodes: TopologyNode[]
@@ -15,6 +17,7 @@ const props = withDefaults(
     nodeDisplayFields?: Record<string, { label: string; displayText: string }[]>
     edgeDisplayFields?: Record<string, { label: string; displayText: string }[]>
     nodePortConfig?: Record<string, { hasInput: boolean; hasOutput: boolean }>
+    nodeStatusMap?: Record<string, NodeStatusInfo>
     visible?: boolean
     canUndo?: boolean
     canRedo?: boolean
@@ -24,6 +27,7 @@ const props = withDefaults(
     nodeDisplayFields: () => ({}),
     edgeDisplayFields: () => ({}),
     nodePortConfig: () => ({}),
+    nodeStatusMap: () => ({}),
     visible: true,
     canUndo: false,
     canRedo: false,
@@ -75,6 +79,7 @@ const {
   nodeDisplayFields: props.nodeDisplayFields,
   edgeDisplayFields: props.edgeDisplayFields,
   nodePortConfig: props.nodePortConfig,
+  nodeStatusMap: props.nodeStatusMap,
   selectedNodeId: props.selectedNodeId,
 }))
 
@@ -137,7 +142,7 @@ onUnmounted(() => {
 
 // ========== Watchers ==========
 watch(
-  () => [props.nodes, props.edges, props.nodeDisplayFields, props.edgeDisplayFields, props.nodePortConfig],
+  () => [props.nodes, props.edges, props.nodeDisplayFields, props.edgeDisplayFields, props.nodePortConfig, props.nodeStatusMap],
   () => syncGraph(),
   { deep: true },
 )

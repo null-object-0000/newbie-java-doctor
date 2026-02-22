@@ -381,7 +381,7 @@ export function useGraph(
     const g = graph.value
     if (!g || !containerRef.value) return
 
-    const { nodes: dataNodes, edges: dataEdges, nodeDisplayFields, edgeDisplayFields, nodePortConfig, selectedNodeId } = data
+    const { nodes: dataNodes, edges: dataEdges, nodeDisplayFields, edgeDisplayFields, nodePortConfig, nodeStatusMap, selectedNodeId } = data
 
     // --- Sync Nodes ---
     const dataNodeIds = new Set(dataNodes.map((n) => n.id))
@@ -417,6 +417,7 @@ export function useGraph(
             raw: node,
             displayFields: nodeDisplayFields[node.id] ?? [],
             selected: isSelected,
+            nodeStatus: nodeStatusMap[node.id] ?? null,
           })
         }
       } else {
@@ -431,6 +432,7 @@ export function useGraph(
             raw: node,
             displayFields: nodeDisplayFields[node.id] ?? [],
             selected: isSelected,
+            nodeStatus: nodeStatusMap[node.id] ?? null,
           },
           ports: getPortsForNode(node.id, dataNodes, nodePortConfig),
           movable: !isServerFollowingClient,

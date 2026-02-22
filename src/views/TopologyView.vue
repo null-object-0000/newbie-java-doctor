@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useTopologyStore } from '@/stores/topology'
+import { useAnalysisStore } from '@/stores/analysis'
 import { storeToRefs } from 'pinia'
 import {
   getTopologyDisplayConfig,
@@ -18,6 +19,7 @@ import TopologyDiagram from '@/components/TopologyDiagram.vue'
 import NodeListPanel from '@/components/NodeListPanel.vue'
 import NodeEditorPanel from '@/components/NodeEditorPanel.vue'
 import EdgeEditorPanel from '@/components/EdgeEditorPanel.vue'
+import AnalysisReportPanel from '@/components/AnalysisReportPanel.vue'
 import type { TopologyNode, TopologyEdge } from '@/types/layers'
 
 const message = useMessage()
@@ -32,6 +34,19 @@ const {
   canUndo,
   canRedo,
 } = storeToRefs(store)
+
+const analysisStore = useAnalysisStore()
+const { hasResult, isAnalyzing, isStale, nodeStatusMap } = storeToRefs(analysisStore)
+
+function handleAnalyze() {
+  analysisStore.analyze()
+  editingNode.value = null
+  editingEdge.value = null
+}
+
+function handleClearResult() {
+  analysisStore.clearResult()
+}
 
 /** 按节点生成拓扑图卡片展示字段 */
 const nodeDisplayFields = computed(() => {
@@ -295,6 +310,23 @@ function onDropFromPalette(payload: DropPayload) {
             <NButton v-if="middleViewMode === 'json'" size="tiny" secondary @click="copyJson">
               复制
             </NButton>
+            <div class="analysis-btn-group">
+              <NButton
+                size="tiny"
+                type="primary"
+                :loading="isAnalyzing"
+                @click="handleAnalyze"
+              >
+                <template #icon>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
+                </template>
+                {{ hasResult ? '重新分析' : '开始分析' }}
+              </NButton>
+              <NButton v-if="hasResult" size="tiny" quaternary @click="handleClearResult">
+                清除
+              </NButton>
+              <span v-if="isStale" class="stale-dot" title="数据已变更，结果可能过期" />
+            </div>
           </div>
           <input ref="fileInputRef" type="file" accept=".json" style="display: none" @change="handleFileImport" />
         </div>
@@ -302,6 +334,7 @@ function onDropFromPalette(payload: DropPayload) {
           <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
             :node-display-fields="nodeDisplayFields" :edge-display-fields="edgeDisplayFields"
             :node-port-config="nodePortConfig"
+            :node-status-map="nodeStatusMap"
             :visible="middleViewMode === 'graph'" :can-undo="canUndo" :can-redo="canRedo"
             :selected-node-id="selectedNodeId"
             @remove="onRemove" @edit="onEdit" @select="onSelect" @edge-select="onEdgeSelect"
@@ -320,6 +353,9 @@ function onDropFromPalette(payload: DropPayload) {
         </div>
         <div v-else-if="editingEdge" class="panel-right-inner">
           <EdgeEditorPanel :edge="editingEdge" @close="editingEdge = null" />
+        </div>
+        <div v-else-if="hasResult" class="panel-right-inner">
+          <AnalysisReportPanel @close="handleClearResult" />
         </div>
         <div v-else class="panel-placeholder">
           <div class="placeholder-icon">
@@ -478,5 +514,26 @@ function onDropFromPalette(payload: DropPayload) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.analysis-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  position: relative;
+}
+
+.stale-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #eab308;
+  flex-shrink: 0;
+  animation: stale-pulse 2s ease-in-out infinite;
+}
+
+@keyframes stale-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 </style>

@@ -3,12 +3,13 @@ import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import type { Node } from '@antv/x6'
 import { getLayerTheme, getLayerIcon } from '@/registry/layers'
 import type { TopologyNode } from '@/types/layers'
-import type { DisplayField } from './constants'
+import type { DisplayField, NodeStatusInfo } from './constants'
 
 interface NodeData {
   raw?: TopologyNode
   displayFields?: DisplayField[]
   selected?: boolean
+  nodeStatus?: NodeStatusInfo | null
 }
 
 const getNode = inject<() => Node>('getNode')!
@@ -37,6 +38,7 @@ const followsClient = computed(
   () => raw.value?.dependencyRole === 'server' && !!raw.value?.dependencyGroupId,
 )
 const canRemove = computed(() => isUser.value && !followsClient.value)
+const nodeStatus = computed(() => data.value.nodeStatus ?? null)
 </script>
 
 <template>
@@ -48,6 +50,9 @@ const canRemove = computed(() => isUser.value && !followsClient.value)
         user: isUser,
         'topology-card-selected': isSelected,
         'topology-card-follows-client': followsClient,
+        'topology-card-status-ok': nodeStatus?.status === 'ok',
+        'topology-card-status-warning': nodeStatus?.status === 'warning',
+        'topology-card-status-error': nodeStatus?.status === 'error',
       },
     ]"
     @dragstart.prevent
@@ -77,11 +82,20 @@ const canRemove = computed(() => isUser.value && !followsClient.value)
           </svg>
         </span>
       </div>
+      <span
+        v-if="nodeStatus"
+        class="topology-card-status-dot"
+        :class="`status-${nodeStatus.status}`"
+        :title="nodeStatus.summary"
+      />
     </div>
     <div v-if="displayFields.length > 0" class="topology-card-body">
       <div v-for="(field, idx) in displayFields" :key="idx" class="topology-card-field">
         {{ field.label }}: {{ field.displayText }}
       </div>
+    </div>
+    <div v-if="nodeStatus" class="topology-card-status-bar" :class="`status-bar-${nodeStatus.status}`">
+      {{ nodeStatus.summary }}
     </div>
   </div>
 </template>
@@ -227,5 +241,68 @@ const canRemove = computed(() => isUser.value && !followsClient.value)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* --- Status indicator --- */
+
+.topology-card-status-ok {
+  border-left: 3px solid #22c55e;
+}
+
+.topology-card-status-warning {
+  border-left: 3px solid #eab308;
+}
+
+.topology-card-status-error {
+  border-left: 3px solid #ef4444;
+}
+
+.topology-card-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.topology-card-status-dot.status-ok {
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
+}
+
+.topology-card-status-dot.status-warning {
+  background: #eab308;
+  box-shadow: 0 0 4px rgba(234, 179, 8, 0.4);
+}
+
+.topology-card-status-dot.status-error {
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+}
+
+.topology-card-status-bar {
+  font-size: 9.5px;
+  line-height: 1.3;
+  padding: 3px 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: auto;
+}
+
+.status-bar-ok {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.status-bar-warning {
+  background: #fefce8;
+  color: #a16207;
+}
+
+.status-bar-error {
+  background: #fef2f2;
+  color: #dc2626;
 }
 </style>
