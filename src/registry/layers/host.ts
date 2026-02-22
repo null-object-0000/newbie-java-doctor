@@ -103,7 +103,7 @@ const tunablesSchema: FormSchema = {
   sections: [
     {
       id: 'net',
-      label: '可调配置 — net',
+      label: 'net',
       fields: [
         {
           key: 'net.tcpTwReuse',
@@ -130,7 +130,7 @@ const tunablesSchema: FormSchema = {
     },
     {
       id: 'fs',
-      label: '可调配置 — fs',
+      label: 'fs',
       fields: [
         { key: 'fs.ulimitN', label: 'ulimit -n', type: 'number', default: 65535, min: 0 },
         { key: 'fs.fsNrOpen', label: 'fs.nr_open', type: 'number', default: 65535, min: 0 },

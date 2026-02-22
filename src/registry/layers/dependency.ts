@@ -13,7 +13,7 @@ const redisServerConstraintsSchema: FormSchema = {
   sections: [
     {
       id: 'redis_server_constraints',
-      label: '环境约束 — Redis Server',
+      label: 'Redis Server',
       fields: [
         { key: 'memoryGb', label: '内存容量 (GB)', type: 'number', default: 8, min: 0 },
         { key: 'shardCount', label: '分片数量', type: 'number', default: 1, min: 1 },
@@ -26,7 +26,7 @@ const redisClientConstraintsSchema: FormSchema = {
   sections: [
     {
       id: 'redis_client_constraints',
-      label: '环境约束 — Redis Client',
+      label: 'Redis Client',
       fields: [
         {
           key: 'redisClient',
@@ -49,7 +49,7 @@ const databaseServerConstraintsSchema: FormSchema = {
   sections: [
     {
       id: 'database_server_constraints',
-      label: '环境约束 — Database Server',
+      label: 'Database Server',
       fields: [
         { key: 'engine', label: '引擎', type: 'string', default: 'MySQL', placeholder: 'MySQL' },
         { key: 'cpu', label: 'CPU', type: 'number', default: 8, min: 0 },
@@ -88,7 +88,7 @@ const httpApiServerConstraintsSchema: FormSchema = {
   sections: [
     {
       id: 'http_api_server_constraints',
-      label: '环境约束 — 三方接口 Server',
+      label: '三方接口 Server',
       fields: [
         {
           key: 'networkEnv',
@@ -111,7 +111,7 @@ const httpApiServerObjectivesSchema: FormSchema = {
   sections: [
     {
       id: 'http_api_server_objectives',
-      label: '负载目标 — 三方接口 Server',
+      label: '三方接口 Server',
       fields: [
         { key: 'targetQps', label: '目标 QPS', type: 'number', default: 1000, min: 0 },
         { key: 'slaRtMs', label: 'SLA 响应时间 (ms)', type: 'number', default: 200, min: 0 },
@@ -124,7 +124,7 @@ const httpApiClientConstraintsSchema: FormSchema = {
   sections: [
     {
       id: 'http_api_client_constraints',
-      label: '环境约束 — HTTP Client',
+      label: 'HTTP Client',
       fields: [
         {
           key: 'clientType',
@@ -167,7 +167,7 @@ const httpApiClientTunablesSchema: FormSchema = {
   sections: [
     {
       id: 'http_api_client_tunables_java_http',
-      label: '可调配置 — Java HttpClient',
+      label: 'Java HttpClient',
       visibleWhen: { field: 'clientType', value: 'java_http' },
       fields: [
         {
@@ -186,7 +186,7 @@ const httpApiClientTunablesSchema: FormSchema = {
     },
     {
       id: 'http_api_client_tunables_okhttp',
-      label: '可调配置 — OkHttp',
+      label: 'OkHttp',
       visibleWhen: { field: 'clientType', value: 'okhttp' },
       fields: [
         { key: 'okhttp.maxRequestsPerHost', label: 'Dispatcher.MaxRequestsPerHost', type: 'number', default: 5, min: 1 },
@@ -200,7 +200,7 @@ const httpApiClientTunablesSchema: FormSchema = {
     },
     {
       id: 'http_api_client_tunables_apache',
-      label: '可调配置 — Apache HttpClient',
+      label: 'Apache HttpClient',
       visibleWhen: { field: 'clientType', value: 'apache' },
       fields: [
         { key: 'apache.maxConnTotal', label: 'MaxConnTotal', type: 'number', default: 25, min: 1 },

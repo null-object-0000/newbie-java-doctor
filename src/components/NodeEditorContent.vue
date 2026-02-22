@@ -34,20 +34,12 @@ const model = computed(() => {
   return nodeTunables.value[nodeId] ?? {}
 })
 
-const resetHandler = computed(() => {
-  const nodeId = props.editingNode?.id
-  if (!nodeId) return undefined
-  return () => store.resetNode(nodeId)
-})
-
 const formContext = computed(() => {
   if (props.section !== 'tunables') return undefined
   const nodeId = props.editingNode?.id
   if (!nodeId) return undefined
   return nodeConstraints.value[nodeId] ?? {}
 })
-
-const showReset = computed(() => !!resetHandler.value)
 
 const emptyDescription = computed(() => {
   if (props.section === 'constraints') return '该节点无环境约束'
@@ -59,8 +51,7 @@ const emptyDescription = computed(() => {
 <template>
   <div class="node-editor-content">
     <template v-if="schema">
-      <DynamicForm :schema="schema" :model="model" :context="formContext" :show-reset="showReset" :before-change="() => store.pushState?.()"
-        @reset="resetHandler?.()" />
+      <DynamicForm :schema="schema" :model="model" :context="formContext" :show-reset="false" :before-change="() => store.pushState?.()" />
     </template>
     <NEmpty v-else :description="emptyDescription" class="section-empty" />
   </div>

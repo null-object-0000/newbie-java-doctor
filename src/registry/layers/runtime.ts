@@ -72,7 +72,7 @@ const tunablesSchema: FormSchema = {
   sections: [
     {
       id: 'runtime',
-      label: '可调配置 — 运行时 / Web 容器',
+      label: '运行时 / Web 容器',
       fields: [
         { key: 'gc', label: '垃圾回收器', type: 'string', default: 'G1GC', placeholder: 'G1GC' },
         { key: 'jvmOptions', label: 'JVM 配置', type: 'string', default: '-Xms4g -Xmx4g', placeholder: '-Xms4g -Xmx4g' },
@@ -94,7 +94,7 @@ const tunablesSchema: FormSchema = {
     },
     {
       id: 'logback',
-      label: '可调配置 — Logback',
+      label: 'Logback',
       fields: [
         { key: 'logbackMaxFileSize', label: 'RollingFileAppender maxFileSize', type: 'string', default: '100MB', placeholder: '100MB' },
         { key: 'logbackMaxHistory', label: 'maxHistory', type: 'number', default: 30, min: 0 },

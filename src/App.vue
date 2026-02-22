@@ -76,4 +76,32 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
+
+/* ---- 全局滚动条 ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-input);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
 </style>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NCard, NFormItem, NInput, NInputNumber, NSelect, NDynamicTags, NButton, NText } from 'naive-ui'
+import { NFormItem, NInput, NInputNumber, NSelect, NDynamicTags, NButton, NText } from 'naive-ui'
 import type { SelectOption } from 'naive-ui'
 import type { FormSchema, FormSection, FieldDefinition, SectionScope, ValidationContext } from '@/registry/spec'
 import { getByPath, setByPath } from '@/registry/schemaBuild'
@@ -111,68 +111,116 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
 </script>
 
 <template>
-  <div v-if="hasSections" class="dynamic-form">
-    <NCard
-      v-for="section in visibleSections"
-      :key="section.id"
-      size="small"
-    >
-      <template #header>
-        <span class="card-title-text">{{ section.label }}</span>
-        <NText
-          v-if="section.sectionScope"
-          :type="scopeTypes[section.sectionScope]"
-          class="card-scope"
-        >
-          {{ scopeLabels[section.sectionScope] }}
+  <div v-if="hasSections" class="dynamic-form" :class="{ 'single-section': visibleSections.length === 1 }">
+    <template v-for="(section, idx) in visibleSections" :key="section.id">
+      <!-- 多个 section 时用轻量子标题分隔 -->
+      <div v-if="visibleSections.length > 1" class="sub-section">
+        <div class="sub-section-header">
+          <span class="sub-section-title">{{ section.label }}</span>
+          <NText
+            v-if="section.sectionScope"
+            :type="scopeTypes[section.sectionScope]"
+            class="card-scope"
+          >
+            {{ scopeLabels[section.sectionScope] }}
+          </NText>
+        </div>
+        <NText v-if="section.description" depth="3" class="card-desc">
+          {{ section.description }}
         </NText>
-      </template>
-      <NText v-if="section.description" depth="3" class="card-desc">
-        {{ section.description }}
-      </NText>
-      <div v-if="section.fields.length" class="form-grid">
-        <NFormItem
-          v-for="field in section.fields"
-          :key="field.key"
-          :label="field.label"
-          :validation-status="validationErrors[field.key] ? 'error' : undefined"
-          :class="{ 'field-full': field.type === 'string' && (field.key === 'jvmOptions' || field.key === 'note') }"
-        >
-          <NSelect
-            v-if="field.type === 'select'"
-            :value="String(fieldValue(field))"
-            :options="selectOptions(field)"
-            @update:value="onSelectUpdate(field, $event)"
-          />
-          <NDynamicTags
-            v-else-if="field.type === 'stringArray'"
-            :value="tagValues(field)"
-            @update:value="onTagsUpdate(field, $event)"
-          />
-          <NInputNumber
-            v-else-if="field.type === 'number'"
-            :value="fieldValue(field) as number"
-            :placeholder="field.placeholder"
-            :min="field.min"
-            :max="field.max"
-            :step="field.step"
-            style="width: 100%"
-            @update:value="onNumberUpdate(field, $event)"
-          />
-          <NInput
-            v-else
-            :value="(fieldValue(field) as string)"
-            :placeholder="field.placeholder"
-            :type="field.key === 'jvmOptions' || field.key === 'note' ? 'textarea' : 'text'"
-            :rows="field.key === 'jvmOptions' || field.key === 'note' ? 4 : undefined"
-            @update:value="onStringUpdate(field, $event)"
-          />
-          <template v-if="validationErrors[field.key] || field.description" #feedback>
-            {{ validationErrors[field.key] || field.description }}
-          </template>
-        </NFormItem>
+        <div v-if="section.fields.length" class="form-grid">
+          <NFormItem
+            v-for="field in section.fields"
+            :key="field.key"
+            :label="field.label"
+            :validation-status="validationErrors[field.key] ? 'error' : undefined"
+            :class="{ 'field-full': field.type === 'string' && (field.key === 'jvmOptions' || field.key === 'note') }"
+          >
+            <NSelect
+              v-if="field.type === 'select'"
+              :value="String(fieldValue(field))"
+              :options="selectOptions(field)"
+              @update:value="onSelectUpdate(field, $event)"
+            />
+            <NDynamicTags
+              v-else-if="field.type === 'stringArray'"
+              :value="tagValues(field)"
+              @update:value="onTagsUpdate(field, $event)"
+            />
+            <NInputNumber
+              v-else-if="field.type === 'number'"
+              :value="fieldValue(field) as number"
+              :placeholder="field.placeholder"
+              :min="field.min"
+              :max="field.max"
+              :step="field.step"
+              style="width: 100%"
+              @update:value="onNumberUpdate(field, $event)"
+            />
+            <NInput
+              v-else
+              :value="(fieldValue(field) as string)"
+              :placeholder="field.placeholder"
+              :type="field.key === 'jvmOptions' || field.key === 'note' ? 'textarea' : 'text'"
+              :rows="field.key === 'jvmOptions' || field.key === 'note' ? 4 : undefined"
+              @update:value="onStringUpdate(field, $event)"
+            />
+            <template v-if="validationErrors[field.key] || field.description" #feedback>
+              {{ validationErrors[field.key] || field.description }}
+            </template>
+          </NFormItem>
+        </div>
+        <div v-if="idx < visibleSections.length - 1" class="sub-divider" />
       </div>
-    </NCard>
+      <!-- 单个 section 时直接渲染字段 -->
+      <div v-else class="section-inline">
+        <NText v-if="section.description" depth="3" class="card-desc">
+          {{ section.description }}
+        </NText>
+        <div v-if="section.fields.length" class="form-grid">
+          <NFormItem
+            v-for="field in section.fields"
+            :key="field.key"
+            :label="field.label"
+            :validation-status="validationErrors[field.key] ? 'error' : undefined"
+            :class="{ 'field-full': field.type === 'string' && (field.key === 'jvmOptions' || field.key === 'note') }"
+          >
+            <NSelect
+              v-if="field.type === 'select'"
+              :value="String(fieldValue(field))"
+              :options="selectOptions(field)"
+              @update:value="onSelectUpdate(field, $event)"
+            />
+            <NDynamicTags
+              v-else-if="field.type === 'stringArray'"
+              :value="tagValues(field)"
+              @update:value="onTagsUpdate(field, $event)"
+            />
+            <NInputNumber
+              v-else-if="field.type === 'number'"
+              :value="fieldValue(field) as number"
+              :placeholder="field.placeholder"
+              :min="field.min"
+              :max="field.max"
+              :step="field.step"
+              style="width: 100%"
+              @update:value="onNumberUpdate(field, $event)"
+            />
+            <NInput
+              v-else
+              :value="(fieldValue(field) as string)"
+              :placeholder="field.placeholder"
+              :type="field.key === 'jvmOptions' || field.key === 'note' ? 'textarea' : 'text'"
+              :rows="field.key === 'jvmOptions' || field.key === 'note' ? 4 : undefined"
+              @update:value="onStringUpdate(field, $event)"
+            />
+            <template v-if="validationErrors[field.key] || field.description" #feedback>
+              {{ validationErrors[field.key] || field.description }}
+            </template>
+          </NFormItem>
+        </div>
+      </div>
+    </template>
     <div v-if="showReset" class="card-actions">
       <NButton secondary @click="emit('reset')">恢复默认</NButton>
     </div>
@@ -183,15 +231,36 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
 .dynamic-form {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 0;
 }
 
-.card-title-text {
+/* ---- 子分组（多 section 时） ---- */
+.sub-section {
+  padding: 0;
+}
+
+.sub-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.375rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.sub-section-title {
+  font-size: 0.8125rem;
   font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sub-divider {
+  height: 0;
+  margin: 0.75rem 0;
+  border-top: 1px dashed var(--border);
 }
 
 .card-scope {
-  margin-left: 0.5rem;
   font-size: 0.6875rem;
   font-weight: 500;
 }
@@ -199,13 +268,19 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
 .card-desc {
   display: block;
   font-size: 0.8125rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+  color: var(--text-muted);
 }
 
+.section-inline {
+  /* no extra chrome */
+}
+
+/* ---- 表单网格 ---- */
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0.5rem 1rem;
+  gap: 0.375rem 1rem;
 }
 
 .field-full {
