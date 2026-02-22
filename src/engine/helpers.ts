@@ -18,7 +18,7 @@ export function clamp(value: number, min: number, max: number): number {
 export function parseXmx(jvmOptions: string): number | null {
   const match = jvmOptions.match(/-Xmx(\d+)([gmkGMK]?)/)
   if (!match) return null
-  const value = parseInt(match[1], 10)
+  const value = parseInt(match[1] ?? '0', 10)
   const unit = (match[2] ?? '').toLowerCase()
   switch (unit) {
     case 'g': return value
@@ -34,7 +34,7 @@ export function parseXmx(jvmOptions: string): number | null {
 export function parseXms(jvmOptions: string): number | null {
   const match = jvmOptions.match(/-Xms(\d+)([gmkGMK]?)/)
   if (!match) return null
-  const value = parseInt(match[1], 10)
+  const value = parseInt(match[1] ?? '0', 10)
   const unit = (match[2] ?? '').toLowerCase()
   switch (unit) {
     case 'g': return value
@@ -48,8 +48,8 @@ export function parseXms(jvmOptions: string): number | null {
 export function parsePortRange(range: string): { low: number; high: number } | null {
   const parts = range.trim().split(/\s+/)
   if (parts.length !== 2) return null
-  const low = parseInt(parts[0], 10)
-  const high = parseInt(parts[1], 10)
+  const low = parseInt(parts[0] ?? '0', 10)
+  const high = parseInt(parts[1] ?? '0', 10)
   if (isNaN(low) || isNaN(high) || low >= high) return null
   return { low, high }
 }
