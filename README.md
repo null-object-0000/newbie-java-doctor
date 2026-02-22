@@ -86,4 +86,4 @@ bash scripts/collect-params.sh -o topology.json
 
 ## License
 
-MIT
+Apache-2.0
