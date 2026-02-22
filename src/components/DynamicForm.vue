@@ -234,7 +234,6 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
   gap: 0;
 }
 
-/* ---- 子分组（多 section 时） ---- */
 .sub-section {
   padding: 0;
 }
@@ -244,7 +243,7 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
   align-items: center;
   gap: 0.5rem;
   padding-bottom: 0.375rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.625rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -256,7 +255,7 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
 
 .sub-divider {
   height: 0;
-  margin: 0.75rem 0;
+  margin: 0.875rem 0;
   border-top: 1px dashed var(--border);
 }
 
@@ -270,17 +269,17 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
   font-size: 0.8125rem;
   margin-bottom: 0.75rem;
   color: var(--text-muted);
+  line-height: 1.6;
 }
 
 .section-inline {
   /* no extra chrome */
 }
 
-/* ---- 表单网格 ---- */
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0.375rem 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.25rem 0.75rem;
 }
 
 .field-full {
@@ -288,8 +287,8 @@ const scopeTypes: Record<SectionScope, 'default' | 'error' | 'info'> = {
 }
 
 .card-actions {
-  margin-top: 0.25rem;
-  padding-top: 1rem;
+  margin-top: 0.375rem;
+  padding-top: 0.875rem;
   border-top: 1px solid var(--border);
 }
 </style>

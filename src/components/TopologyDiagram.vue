@@ -280,20 +280,21 @@ function onRedo() {
   height: 100%;
 }
 
-/* ---- Toolbar ---- */
 .diagram-toolbar {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
+  bottom: 14px;
+  right: 14px;
   z-index: 10;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  background: var(--bg-card, #fff);
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  border-radius: var(--radius-lg);
   padding: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-md);
 }
 
 .toolbar-group {
@@ -305,40 +306,46 @@ function onRedo() {
 .toolbar-divider {
   height: 1px;
   margin: 2px 4px;
-  background: var(--border, #e2e8f0);
+  background: var(--border);
+  opacity: 0.6;
 }
 
 .toolbar-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border: none;
   background: transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  color: var(--text-secondary, #334155);
-  transition: background 0.15s, color 0.15s;
+  color: var(--text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .toolbar-btn:hover:not(:disabled) {
-  background: var(--bg-hover, #f1f5f9);
-  color: var(--accent, #4f46e5);
+  background: var(--accent-surface);
+  color: var(--accent);
 }
 
 .toolbar-btn:active:not(:disabled) {
-  background: var(--bg-active, #e2e8f0);
+  background: var(--accent-light);
 }
 
 .toolbar-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
+.toolbar-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .toolbar-btn-danger:hover:not(:disabled) {
-  color: #ef4444;
-  background: #fef2f2;
+  color: var(--danger);
+  background: var(--danger-surface);
 }
 
 .toolbar-btn svg {

@@ -209,19 +209,19 @@ const nodeTitle = computed(() => {
   background: var(--bg-card);
 }
 
-/* ---- 顶栏 ---- */
 .panel-header {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.75rem 1.25rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
 }
 
 .panel-title {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   flex: 1;
   min-width: 0;
 }
@@ -233,7 +233,6 @@ const nodeTitle = computed(() => {
   gap: 0.25rem;
 }
 
-/* ---- 内容区整体布局 ---- */
 .panel-content {
   flex: 1;
   min-height: 0;
@@ -264,59 +263,56 @@ const nodeTitle = computed(() => {
   overflow: hidden;
 }
 
-/* ---- 拖拽分隔条 ---- */
 .resize-handle {
   flex-shrink: 0;
-  height: 7px;
+  height: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: row-resize;
-  background: var(--bg-page);
+  background: var(--bg-subtle);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  transition: background 0.15s;
+  transition: background var(--transition-fast);
 }
 
 .resize-handle:hover,
 .panel-content.is-dragging > .resize-handle {
-  background: var(--bg-active);
+  background: var(--accent-surface);
 }
 
 .resize-handle-grip {
-  width: 32px;
+  width: 28px;
   height: 3px;
-  border-radius: 1.5px;
-  background: var(--border);
-  transition: background 0.15s;
+  border-radius: 2px;
+  background: var(--border-input);
+  transition: background var(--transition-fast);
 }
 
 .resize-handle:hover > .resize-handle-grip,
 .panel-content.is-dragging > .resize-handle > .resize-handle-grip {
-  background: var(--border-input);
+  background: var(--accent-dim);
 }
 
-/* ---- 大分类标题条 ---- */
 .category-bar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 1.25rem;
-  background: var(--bg-page);
+  padding: 0.5rem 1rem;
+  background: var(--bg-subtle);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 
 .category-label {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
   text-transform: uppercase;
 }
 
-/* ---- Tabs 模式（环境约束 + 负载目标） ---- */
 .input-tabs {
   flex: 1;
   min-height: 0;
@@ -326,8 +322,8 @@ const nodeTitle = computed(() => {
 
 .input-tabs :deep(.n-tabs-nav) {
   flex-shrink: 0;
-  padding: 0 1.25rem;
-  background: var(--bg-page);
+  padding: 0 1rem;
+  background: var(--bg-subtle);
   border-bottom: 1px solid var(--border);
 }
 
@@ -337,7 +333,6 @@ const nodeTitle = computed(() => {
   overflow: auto;
 }
 
-/* ---- 滚动区 + 内容 ---- */
 .section-scroll {
   flex: 1;
   min-height: 0;

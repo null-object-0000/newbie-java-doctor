@@ -646,7 +646,7 @@ export function useGraph(
       grid: true,
       panning: { enabled: true, eventTypes: ['leftMouseDown', 'mouseWheel'] },
       mousewheel: { enabled: true, minScale: 0.5, maxScale: 3 },
-      background: { color: '#fafafa' },
+      background: { color: '#ffffff' },
       connecting: {
         snap: { radius: 30 },
         allowBlank: false,

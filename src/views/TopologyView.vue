@@ -13,7 +13,7 @@ import {
 } from '@/registry/layers'
 import type { SchemaCategory } from '@/registry/layers'
 import { getByPath } from '@/registry/schemaBuild'
-import { NButton, NButtonGroup, NCard, NCode, NEmpty, NText, useDialog, useMessage } from 'naive-ui'
+import { NButton, NButtonGroup, NCode, useDialog, useMessage } from 'naive-ui'
 import TopologyDiagram from '@/components/TopologyDiagram.vue'
 import NodeListPanel from '@/components/NodeListPanel.vue'
 import NodeEditorPanel from '@/components/NodeEditorPanel.vue'
@@ -266,20 +266,27 @@ function onDropFromPalette(payload: DropPayload) {
       <aside class="panel-left">
         <NodeListPanel :can-add-layer="canAddLayer" />
       </aside>
-      <NCard class="topology-main" :segmented="{ content: true }" size="small">
-        <template #header>
-          <NButtonGroup size="small">
-            <NButton :type="middleViewMode === 'graph' ? 'primary' : 'default'"
-              :secondary="middleViewMode === 'graph'" @click="middleViewMode = 'graph'">
+
+      <div class="topology-main">
+        <div class="main-header">
+          <div class="view-tabs">
+            <button
+              class="view-tab"
+              :class="{ active: middleViewMode === 'graph' }"
+              @click="middleViewMode = 'graph'"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
               拓扑图
-            </NButton>
-            <NButton :type="middleViewMode === 'json' ? 'primary' : 'default'" :secondary="middleViewMode === 'json'"
-              @click="middleViewMode = 'json'">
+            </button>
+            <button
+              class="view-tab"
+              :class="{ active: middleViewMode === 'json' }"
+              @click="middleViewMode = 'json'"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
               JSON
-            </NButton>
-          </NButtonGroup>
-        </template>
-        <template #header-extra>
+            </button>
+          </div>
           <div class="header-actions">
             <NButtonGroup size="tiny">
               <NButton secondary @click="triggerImport">导入</NButton>
@@ -290,7 +297,7 @@ function onDropFromPalette(payload: DropPayload) {
             </NButton>
           </div>
           <input ref="fileInputRef" type="file" accept=".json" style="display: none" @change="handleFileImport" />
-        </template>
+        </div>
         <div class="middle-content">
           <TopologyDiagram v-show="middleViewMode === 'graph'" :nodes="nodes" :edges="edges"
             :node-display-fields="nodeDisplayFields" :edge-display-fields="edgeDisplayFields"
@@ -305,7 +312,8 @@ function onDropFromPalette(payload: DropPayload) {
             <NCode :code="topologyJson" language="json" word-wrap />
           </div>
         </div>
-      </NCard>
+      </div>
+
       <aside class="panel-right">
         <div v-if="editingNode" class="panel-right-inner">
           <NodeEditorPanel :layer-id="editingNode.layerId" :editing-node="editingNode" @close="editingNode = null" />
@@ -313,7 +321,15 @@ function onDropFromPalette(payload: DropPayload) {
         <div v-else-if="editingEdge" class="panel-right-inner">
           <EdgeEditorPanel :edge="editingEdge" @close="editingEdge = null" />
         </div>
-        <NEmpty v-else description="点击拓扑图中的节点或连线可在此编辑属性" class="panel-placeholder" />
+        <div v-else class="panel-placeholder">
+          <div class="placeholder-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 16v-4" /><path d="M12 8h.01" />
+            </svg>
+          </div>
+          <span class="placeholder-text">点击节点或连线编辑属性</span>
+        </div>
       </aside>
     </div>
   </div>
@@ -331,12 +347,12 @@ function onDropFromPalette(payload: DropPayload) {
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 0.75rem;
+  gap: 0.625rem;
   overflow: hidden;
 }
 
 .panel-left {
-  width: 240px;
+  width: 232px;
   flex-shrink: 0;
   min-height: 0;
   overflow: hidden;
@@ -349,17 +365,60 @@ function onDropFromPalette(payload: DropPayload) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-panel);
 }
 
-.topology-main :deep(.n-card__content) {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  padding: 0 !important;
+.main-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-active);
+  border-radius: var(--radius);
+  padding: 2px;
+}
+
+.view-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0.3rem 0.75rem;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+  font-family: inherit;
+}
+
+.view-tab:hover {
+  color: var(--text-secondary);
+}
+
+.view-tab.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
 }
 
 .middle-content {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   position: relative;
 }
@@ -369,17 +428,17 @@ function onDropFromPalette(payload: DropPayload) {
   inset: 0;
   overflow: auto;
   padding: 1rem;
-  background: var(--bg-page);
+  background: var(--bg-subtle);
 }
 
 .panel-right {
-  width: 420px;
+  width: 400px;
   flex-shrink: 0;
   min-height: 0;
   overflow: hidden;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-panel);
   background: var(--bg-card);
   display: flex;
   flex-direction: column;
@@ -394,7 +453,25 @@ function onDropFromPalette(payload: DropPayload) {
 }
 
 .panel-placeholder {
-  padding: 1.5rem 1.25rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+}
+
+.placeholder-icon {
+  color: var(--text-faint);
+  opacity: 0.5;
+}
+
+.placeholder-text {
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+  text-align: center;
+  line-height: 1.5;
 }
 
 .header-actions {

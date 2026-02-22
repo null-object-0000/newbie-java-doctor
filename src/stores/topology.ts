@@ -20,7 +20,7 @@ import type {
   AddNodeOptions,
   DependencyRole,
 } from '@/types/layers'
-import { cloneData } from '@/utils/clone'
+import { deepClone } from '@/utils/clone'
 
 /** 完整拓扑状态（用于撤销/重做与 JSON 导出） */
 export interface TopologyFullState {
@@ -202,7 +202,7 @@ export const useTopologyStore = defineStore('topology', () => {
   }
 
   function setFullState(s: TopologyFullState): void {
-    const c = cloneData(s)
+    const c = deepClone(s)
     topology.value = c.topology
     nodeConstraints.value = c.nodeConstraints ?? {}
     nodeObjectives.value = c.nodeObjectives ?? {}
@@ -211,7 +211,7 @@ export const useTopologyStore = defineStore('topology', () => {
   }
 
   function pushState(): void {
-    const snapshot = cloneData(getFullState())
+    const snapshot = deepClone(getFullState())
     historyPast.value = [...historyPast.value.slice(-(HISTORY_MAX - 1)), snapshot]
     historyFuture.value = []
   }
@@ -220,7 +220,7 @@ export const useTopologyStore = defineStore('topology', () => {
     const prev = historyPast.value[historyPast.value.length - 1]
     if (!prev) return
     historyPast.value = historyPast.value.slice(0, -1)
-    historyFuture.value = [cloneData(getFullState()), ...historyFuture.value]
+    historyFuture.value = [deepClone(getFullState()), ...historyFuture.value]
     setFullState(prev)
   }
 
@@ -228,7 +228,7 @@ export const useTopologyStore = defineStore('topology', () => {
     const next = historyFuture.value[0]
     if (!next) return
     historyFuture.value = historyFuture.value.slice(1)
-    historyPast.value = [...historyPast.value, cloneData(getFullState())]
+    historyPast.value = [...historyPast.value, deepClone(getFullState())]
     setFullState(next)
   }
 
@@ -591,7 +591,7 @@ export const useTopologyStore = defineStore('topology', () => {
 
   function saveToStorage(): void {
     try {
-      const state: TopologyFullState = cloneData(getFullState())
+      const state: TopologyFullState = deepClone(getFullState())
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
     } catch { /* quota exceeded — silently ignore */ }
   }

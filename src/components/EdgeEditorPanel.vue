@@ -84,22 +84,23 @@ function onReset() {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
 }
 
 .panel-title {
-  font-size: 1rem;
+  font-size: 0.875rem;
 }
 
 .panel-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1rem;
 }
 
 .section-empty {
-  padding: 1.5rem 0;
+  padding: 2rem 0;
 }
 </style>

@@ -87,39 +87,37 @@ const canRemove = computed(() => isUser.value && !followsClient.value)
 </template>
 
 <style>
-/* Global styles — x6-vue-shape mounts cards inside X6's container */
 .topology-card {
   display: flex;
   flex-direction: column;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
   box-sizing: border-box;
-  padding: 12px 12px 14px;
+  padding: 10px 12px 12px;
   width: 100%;
   height: 100%;
   background: #fff;
-  gap: 8px;
+  gap: 6px;
   cursor: pointer;
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
   overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .topology-card:hover {
-  border-color: var(--accent, #4f46e5);
-  box-shadow: 0 2px 12px rgba(79, 70, 229, 0.12);
+  border-color: #a5b4fc;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1);
 }
 
 .topology-card-selected {
-  border-color: var(--accent, #4f46e5) !important;
+  border-color: #4f46e5 !important;
   box-shadow:
-    0 0 0 3px rgba(79, 70, 229, 0.18),
-    0 2px 12px rgba(79, 70, 229, 0.12) !important;
+    0 0 0 2.5px rgba(79, 70, 229, 0.15),
+    0 2px 8px rgba(79, 70, 229, 0.1) !important;
 }
 
 .topology-card.user {
-  border-color: var(--accent-dim, #6366f1);
+  border-color: #c7d2fe;
 }
 
 .topology-card-follows-client {
@@ -129,59 +127,61 @@ const canRemove = computed(() => isUser.value && !followsClient.value)
 .topology-card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .topology-card-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   flex-shrink: 0;
+  letter-spacing: -0.02em;
 }
 
 .topology-card-blue .topology-card-icon {
-  background: #f0f5ff;
-  color: #1d39c4;
+  background: #eef2ff;
+  color: #4338ca;
 }
 
 .topology-card-gray .topology-card-icon {
-  background: #f5f5f5;
-  color: #595959;
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .topology-card-green .topology-card-icon {
-  background: #e6fffb;
-  color: #08979c;
+  background: #ecfdf5;
+  color: #059669;
 }
 
 .topology-card-orange .topology-card-icon {
-  background: #fff7e6;
-  color: #fa8c16;
+  background: #fff7ed;
+  color: #ea580c;
 }
 
 .topology-card-title {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #0f172a);
+  color: #0f172a;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
 .topology-card-actions {
   margin-left: auto;
   display: flex;
-  gap: 4px;
+  gap: 2px;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 150ms ease;
 }
 
 .topology-card:hover .topology-card-actions {
@@ -192,19 +192,17 @@ const canRemove = computed(() => isUser.value && !followsClient.value)
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   cursor: pointer;
-  border-radius: 4px;
-  color: var(--text-muted, #64748b);
-  transition:
-    background 0.15s,
-    color 0.15s;
+  border-radius: 5px;
+  color: #64748b;
+  transition: background 150ms ease, color 150ms ease;
 }
 
 .topology-card-actions .op:hover {
-  background: var(--bg-hover, #f1f5f9);
-  color: var(--accent, #4f46e5);
+  background: #f1f5f9;
+  color: #4f46e5;
 }
 
 .topology-card-actions .op-danger:hover {
@@ -219,14 +217,13 @@ const canRemove = computed(() => isUser.value && !followsClient.value)
   flex-direction: column;
   gap: 2px;
   padding-top: 6px;
-  padding-bottom: 2px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  border-top: 1px solid #f1f5f9;
 }
 
 .topology-card-field {
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--text-muted, #64748b);
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: #64748b;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

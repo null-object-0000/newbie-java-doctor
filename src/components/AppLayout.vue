@@ -1,38 +1,34 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import { NLayoutHeader, NLayoutFooter } from 'naive-ui'
 </script>
 
 <template>
   <div class="app-layout">
-    <NLayoutHeader bordered class="header">
+    <header class="header">
       <div class="header-inner">
         <div class="logo">
           <div class="logo-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
               <path d="M2 12h20" />
             </svg>
           </div>
-          <div class="logo-text">
-            <h1 class="logo-title">Java Doctor</h1>
-            <span class="logo-subtitle">全链路容量评估与性能导航</span>
-          </div>
+          <span class="logo-title">Java Doctor</span>
+          <span class="logo-divider" />
+          <span class="logo-subtitle">全链路容量评估</span>
         </div>
       </div>
-    </NLayoutHeader>
+    </header>
 
     <main class="main">
       <RouterView />
     </main>
 
-    <NLayoutFooter bordered class="footer">
-      <div class="footer-inner">
-        Java Doctor © 2026 · 全链路容量评估与性能导航
-      </div>
-    </NLayoutFooter>
+    <footer class="footer">
+      <span class="footer-text">Java Doctor &copy; 2026</span>
+    </footer>
   </div>
 </template>
 
@@ -49,59 +45,65 @@ import { NLayoutHeader, NLayoutFooter } from 'naive-ui'
 .header {
   flex-shrink: 0;
   background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+  z-index: 20;
 }
 
 .header-inner {
   width: 100%;
-  padding: 0 0.5rem;
-  height: 4rem;
+  padding: 0 1.25rem;
+  height: 3.25rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.625rem;
 }
 
 .logo-icon {
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2rem;
+  height: 2rem;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--accent);
   color: #fff;
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
+  flex-shrink: 0;
 }
 
 .logo-title {
-  font-size: 1.25rem;
+  font-size: 0.9375rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin: 0;
-  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.logo-divider {
+  width: 1px;
+  height: 1rem;
+  background: var(--border);
 }
 
 .logo-subtitle {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 0.05em;
 }
 
 .main {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding: 0.75rem 0.5rem;
+  padding: 0.75rem;
   display: flex;
   flex-direction: column;
 }
 
-/* RouterView 渲染的视图根节点撑满 main */
 .main > * {
   flex: 1;
   min-height: 0;
@@ -110,15 +112,14 @@ import { NLayoutHeader, NLayoutFooter } from 'naive-ui'
 
 .footer {
   flex-shrink: 0;
-  background: var(--bg-footer);
-  padding: 1rem;
+  padding: 0.5rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg-header);
 }
 
-.footer-inner {
-  width: 100%;
-  padding: 0 0.5rem;
-  text-align: center;
-  font-size: 0.875rem;
-  color: var(--text-muted);
+.footer-text {
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
 }
 </style>
