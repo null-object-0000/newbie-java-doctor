@@ -51,11 +51,14 @@ curl -fsSL https://raw.githubusercontent.com/null-object-0000/newbie-java-doctor
 * [ ] **阶段二：引擎升维与调优知识库**
     * [ ] 将线性计算引擎重构为 DAG（有向无环图）遍历算法，支持多分支复杂依赖节点（Redis、MySQL、微服务）的反向并发压制计算。
     * [ ] 丰富参数科普抽屉（Knowledge Panel），直观展示各参数的作用、底层排队论影响，以及在 Linux/Java 中的查询与修改命令。
+    * [ ] **配置面板 Code Mode（代码模式）**：右侧编辑面板支持切换为代码视图，根据节点配置类型智能适配展示格式 —— Spring Boot 节点以 `application.properties` / `application.yml` 形式呈现，Apache HttpClient 等组件则以 Java 代码片段形式展示，所见即所得。
+    * [ ] **内联优化建议与瓶颈跳转**：分析完成后，在右侧配置面板中直接标注优化建议与风险提示（如参数偏低警告、推荐值对比）；同时在分析报告中支持点击瓶颈项一键激活并跳转到对应节点的配置页面，实现"发现问题 → 定位调优"的闭环体验。
 
 * [ ] **阶段三：自动化与 AI 赋能**
     * [ ] **“一键 Prompt”导出**：将拓扑 JSON、瓶颈诊断结果与用户报错日志拼接，生成高质量 AI 诊断 Prompt，为大模型提供完美的现场环境上下文。
     * [ ] 开放标准 HTTP 导入协议，探索与成熟 APM 开源项目（如 SkyWalking/Prometheus）结合，直接读取线上真实 RT 与吞吐量进行推演。
     * [ ] 支持将单个拓扑图作为 Sub-graph（子图）暴露，供其他服务作为 HTTP Client 引入。
+    * [ ] **拓扑驱动的代码预览（Code Playground）**：提供内置的在线代码编辑器环境，基于当前拓扑图自动生成一套完整的 Spring Boot 核心代码与配置示例 —— 包含 Controller 接口定义、中间件客户端配置类（如 `RestTemplate` / `RedisTemplate` Bean 配置）、`application.yml` 等，直观展示拓扑中各节点参数最终落地到代码层面的完整样貌，帮助用户理解"调了这个参数，代码里到底长什么样"。
 
 
 ## 🏗️ 链路分层模型
