@@ -87,9 +87,25 @@ const databaseChild: DependencyNodeTypeDefinition = {
 const httpApiServerConstraintsSchema: FormSchema = {
   sections: [
     {
-      id: 'http_api_server_constraints',
-      label: '三方接口 Server',
+      id: 'http_api_server_sla',
+      label: '下游服务特征',
       fields: [
+        {
+          key: 'avgRtMs',
+          label: '平均响应时间 (ms)',
+          type: 'number',
+          default: 200,
+          min: 1,
+          description: '该服务正常负载下的平均响应耗时',
+        },
+        {
+          key: 'rateLimitQps',
+          label: '限流阈值 (QPS)',
+          type: 'number',
+          default: 0,
+          min: 0,
+          description: '对方服务的限流上限，0 表示无限制或未知',
+        },
         {
           key: 'networkEnv',
           label: '网络环境',
@@ -101,20 +117,6 @@ const httpApiServerConstraintsSchema: FormSchema = {
             { value: 'cross_dc', label: '内网跨中心' },
           ],
         },
-        { key: 'messageSizeBytes', label: '消息大小 (bytes)', type: 'number', default: 1024, min: 0 },
-      ],
-    },
-  ],
-}
-
-const httpApiServerObjectivesSchema: FormSchema = {
-  sections: [
-    {
-      id: 'http_api_server_objectives',
-      label: '三方接口 Server',
-      fields: [
-        { key: 'targetQps', label: '目标 QPS', type: 'number', default: 1000, min: 0 },
-        { key: 'slaRtMs', label: 'SLA 响应时间 (ms)', type: 'number', default: 200, min: 0 },
       ],
     },
   ],
@@ -123,18 +125,18 @@ const httpApiServerObjectivesSchema: FormSchema = {
 const httpApiClientConstraintsSchema: FormSchema = {
   sections: [
     {
-      id: 'http_api_client_constraints',
-      label: 'HTTP Client',
+      id: 'http_api_client_type',
+      label: 'HTTP 客户端',
       fields: [
         {
           key: 'clientType',
           label: 'HTTP 客户端',
           type: 'select',
-          default: 'okhttp',
+          default: 'apache',
           options: [
-            { value: 'java_http', label: 'Java HttpClient' },
-            { value: 'okhttp', label: 'OkHttp' },
             { value: 'apache', label: 'Apache HttpClient' },
+            { value: 'okhttp', label: 'OkHttp' },
+            { value: 'java_http', label: 'Java HttpClient' },
           ],
         },
       ],
@@ -143,15 +145,6 @@ const httpApiClientConstraintsSchema: FormSchema = {
 }
 
 const httpApiClientTunablesCrossRules: CrossFieldRule[] = [
-  {
-    fieldKey: 'okhttp.maxRequestsPerHost',
-    check: ({ formValues }) => {
-      const perHost = getByPath(formValues, 'okhttp.maxRequestsPerHost') as number
-      const total = getByPath(formValues, 'okhttp.maxRequests') as number
-      if (typeof perHost === 'number' && typeof total === 'number' && perHost > total)
-        return `MaxRequestsPerHost (${perHost}) 不应超过 MaxRequests (${total})`
-    },
-  },
   {
     fieldKey: 'apache.maxConnPerRoute',
     check: ({ formValues }) => {
@@ -165,14 +158,90 @@ const httpApiClientTunablesCrossRules: CrossFieldRule[] = [
 
 const httpApiClientTunablesSchema: FormSchema = {
   sections: [
+    // ---- Apache HttpClient ----
     {
-      id: 'http_api_client_tunables_java_http',
+      id: 'apache_pool',
+      label: '连接池',
+      description: '对应 PoolingHttpClientConnectionManager 配置',
+      visibleWhen: { field: 'clientType', value: 'apache' },
+      fields: [
+        {
+          key: 'apache.maxConnPerRoute',
+          label: 'maxConnPerRoute',
+          type: 'number',
+          default: 5,
+          min: 1,
+          description: '每个目标主机的最大连接数，Spring Boot 默认 5',
+        },
+        {
+          key: 'apache.maxConnTotal',
+          label: 'maxConnTotal',
+          type: 'number',
+          default: 25,
+          min: 1,
+          description: '连接池总大小，Spring Boot 默认 25',
+        },
+      ],
+    },
+    {
+      id: 'apache_timeout',
+      label: '超时配置',
+      visibleWhen: { field: 'clientType', value: 'apache' },
+      fields: [
+        { key: 'apache.connectTimeoutMs', label: 'connectTimeout (ms)', type: 'number', default: 10000, min: 0 },
+        {
+          key: 'apache.socketTimeoutMs',
+          label: 'socketTimeout (ms)',
+          type: 'number',
+          default: 10000,
+          min: 0,
+          description: '等待响应数据的超时时间',
+        },
+      ],
+    },
+    // ---- OkHttp ----
+    {
+      id: 'okhttp_pool',
+      label: '连接池',
+      description: '对应 new ConnectionPool() 配置。OkHttp 同步调用无并发连接数上限',
+      visibleWhen: { field: 'clientType', value: 'okhttp' },
+      fields: [
+        {
+          key: 'okhttp.maxIdleConnections',
+          label: 'maxIdleConnections',
+          type: 'number',
+          default: 5,
+          min: 0,
+          description: '最大空闲连接数，影响连接复用效率',
+        },
+        {
+          key: 'okhttp.keepAliveDurationMs',
+          label: 'keepAliveDuration (ms)',
+          type: 'number',
+          default: 300000,
+          min: 0,
+        },
+      ],
+    },
+    {
+      id: 'okhttp_timeout',
+      label: '超时配置',
+      visibleWhen: { field: 'clientType', value: 'okhttp' },
+      fields: [
+        { key: 'okhttp.connectTimeoutMs', label: 'connectTimeout (ms)', type: 'number', default: 10000, min: 0 },
+        { key: 'okhttp.readTimeoutMs', label: 'readTimeout (ms)', type: 'number', default: 10000, min: 0 },
+      ],
+    },
+    // ---- Java HttpClient ----
+    {
+      id: 'java_http_settings',
       label: 'Java HttpClient',
+      description: 'JDK 内置 HTTP 客户端，连接池由 JVM 内部管理，不可配置',
       visibleWhen: { field: 'clientType', value: 'java_http' },
       fields: [
         {
           key: 'javaHttp.version',
-          label: 'Version',
+          label: 'HTTP 版本',
           type: 'select',
           default: 'HTTP_2',
           options: [
@@ -180,34 +249,14 @@ const httpApiClientTunablesSchema: FormSchema = {
             { value: 'HTTP_2', label: 'HTTP/2' },
           ],
         },
-        { key: 'javaHttp.executor', label: 'Executor', type: 'string', default: '', placeholder: 'e.g. virtual / fixedThreadPool(10)' },
-        { key: 'javaHttp.timeoutMs', label: 'Timeout (ms)', type: 'number', default: 5000, min: 0 },
-      ],
-    },
-    {
-      id: 'http_api_client_tunables_okhttp',
-      label: 'OkHttp',
-      visibleWhen: { field: 'clientType', value: 'okhttp' },
-      fields: [
-        { key: 'okhttp.maxRequestsPerHost', label: 'Dispatcher.MaxRequestsPerHost', type: 'number', default: 5, min: 1 },
-        { key: 'okhttp.maxRequests', label: 'Dispatcher.MaxRequests', type: 'number', default: 64, min: 1 },
-        { key: 'okhttp.maxIdleConnections', label: 'ConnectionPool.MaxIdleConnections', type: 'number', default: 5, min: 0 },
-        { key: 'okhttp.keepAliveDurationMs', label: 'ConnectionPool.KeepAliveDuration (ms)', type: 'number', default: 300000, min: 0 },
-        { key: 'okhttp.connectTimeoutMs', label: 'connectTimeout (ms)', type: 'number', default: 10000, min: 0 },
-        { key: 'okhttp.readTimeoutMs', label: 'readTimeout (ms)', type: 'number', default: 10000, min: 0 },
-        { key: 'okhttp.writeTimeoutMs', label: 'writeTimeout (ms)', type: 'number', default: 10000, min: 0 },
-      ],
-    },
-    {
-      id: 'http_api_client_tunables_apache',
-      label: 'Apache HttpClient',
-      visibleWhen: { field: 'clientType', value: 'apache' },
-      fields: [
-        { key: 'apache.maxConnTotal', label: 'MaxConnTotal', type: 'number', default: 25, min: 1 },
-        { key: 'apache.maxConnPerRoute', label: 'MaxConnPerRoute', type: 'number', default: 5, min: 1 },
-        { key: 'apache.timeToLiveMs', label: 'ConnectionConfig.TimeToLive (ms)', type: 'number', default: -1 },
-        { key: 'apache.connectionRequestTimeoutMs', label: 'connectionRequestTimeout (ms)', type: 'number', default: 180000, min: 0 },
-        { key: 'apache.responseTimeoutMs', label: 'responseTimeout (ms)', type: 'number', default: 0, min: 0 },
+        {
+          key: 'javaHttp.connectTimeoutMs',
+          label: 'connectTimeout (ms)',
+          type: 'number',
+          default: 0,
+          min: 0,
+          description: '0 表示无限制（JDK 默认）',
+        },
       ],
     },
   ],
@@ -219,10 +268,9 @@ const httpApiChild: DependencyNodeTypeDefinition = {
   label: '三方接口',
   clientServer: 'client_and_server',
   serverConstraintsSchema: httpApiServerConstraintsSchema,
-  serverObjectivesSchema: httpApiServerObjectivesSchema,
   clientConstraintsSchema: httpApiClientConstraintsSchema,
   clientTunablesSchema: httpApiClientTunablesSchema,
-  serverTopologyDisplay: { constraints: ['networkEnv'], objectives: ['targetQps', 'slaRtMs'] },
+  serverTopologyDisplay: { constraints: ['avgRtMs', 'rateLimitQps'] },
   clientTopologyDisplay: { constraints: ['clientType'] },
 }
 

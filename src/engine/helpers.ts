@@ -86,8 +86,8 @@ export function getNodeData(state: TopologyFullState, nodeId: string): NodeData 
 }
 
 /**
- * 沿 runtime -> dependency 的边，收集所有三方接口 Server 的 slaRtMs 总和
- * 用于估算应用的平均响应时间
+ * 沿 runtime -> dependency 的边，收集所有下游服务的 avgRtMs 总和
+ * 用于估算应用的平均响应时间（默认串行调用）
  */
 export function collectDependencyRtMs(state: TopologyFullState): number {
   const runtimeNode = state.topology.nodes.find((n) => n.layerId === 'runtime')
@@ -99,7 +99,6 @@ export function collectDependencyRtMs(state: TopologyFullState): number {
     const targetNode = state.topology.nodes.find((n) => n.id === edge.target)
     if (!targetNode) continue
 
-    // 依赖层 client 节点 -> 找到同组的 server 节点取 slaRtMs
     if (targetNode.layerId === 'dependency' && targetNode.dependencyGroupId) {
       const serverNode = state.topology.nodes.find(
         (n) =>
@@ -107,16 +106,46 @@ export function collectDependencyRtMs(state: TopologyFullState): number {
           n.dependencyRole === 'server',
       )
       if (serverNode) {
-        const serverObjectives = state.nodeObjectives[serverNode.id] ?? {}
-        const slaRt = getByPath(serverObjectives, 'slaRtMs')
-        if (typeof slaRt === 'number' && slaRt > 0) {
-          totalRtMs += slaRt
+        const serverConstraints = state.nodeConstraints[serverNode.id] ?? {}
+        const avgRt = getByPath(serverConstraints, 'avgRtMs')
+        if (typeof avgRt === 'number' && avgRt > 0) {
+          totalRtMs += avgRt
         }
       }
     }
   }
 
   return totalRtMs
+}
+
+/** 收集 runtime -> dependency 的所有 HTTP API 依赖对（client + server 节点数据） */
+export function collectHttpApiPairs(state: TopologyFullState): { clientData: NodeData; serverData: NodeData }[] {
+  const runtimeNode = state.topology.nodes.find((n) => n.layerId === 'runtime')
+  if (!runtimeNode) return []
+
+  const pairs: { clientData: NodeData; serverData: NodeData }[] = []
+  for (const edge of state.topology.edges) {
+    if (edge.source !== runtimeNode.id) continue
+    const targetNode = state.topology.nodes.find((n) => n.id === edge.target)
+    if (!targetNode || targetNode.layerId !== 'dependency') continue
+    if (targetNode.dependencyKind !== 'http_api') continue
+    if (!targetNode.dependencyGroupId) continue
+
+    const serverNode = state.topology.nodes.find(
+      (n) =>
+        n.dependencyGroupId === targetNode.dependencyGroupId &&
+        n.dependencyRole === 'server',
+    )
+    if (!serverNode) continue
+
+    const clientData = getNodeData(state, targetNode.id)
+    const serverData = getNodeData(state, serverNode.id)
+    if (clientData && serverData) {
+      pairs.push({ clientData, serverData })
+    }
+  }
+
+  return pairs
 }
 
 /**

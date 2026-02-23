@@ -15,7 +15,7 @@ export interface RuntimeCeilingInput {
   hostTunables: Record<string, unknown>
   /** 客户端层 objectives（跨节点读取） */
   clientObjectives: Record<string, unknown>
-  /** 依赖层 slaRtMs 累加值 */
+  /** 依赖层 avgRtMs 累加值 */
   dependencyRtMs: number
 }
 

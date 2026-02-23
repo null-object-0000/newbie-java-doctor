@@ -14,11 +14,13 @@ import type {
 import {
   findNodeByLayer,
   collectDependencyRtMs,
+  collectHttpApiPairs,
   getMessageSizeBytes,
   formatNumber,
 } from './helpers'
 import { computeHostCeiling } from './rules/host'
 import { computeRuntimeCeiling } from './rules/runtime'
+import { computeHttpApiCeiling } from './rules/dependency'
 import { getByPath } from '@/registry/schemaBuild'
 
 export function runAnalysis(state: TopologyFullState): AnalysisResult {
@@ -122,6 +124,36 @@ export function runAnalysis(state: TopologyFullState): AnalysisResult {
         limitingFactor: minDetail.dimension,
         limitingFactorLabel: minDetail.label,
         details: runtimeResult.details,
+      })
+    }
+  }
+
+  // --- 依赖层计算（HTTP API 连接池天花板 + 限流约束） ---
+  const httpApiPairs = collectHttpApiPairs(state)
+  for (const { clientData, serverData } of httpApiPairs) {
+    const httpApiResult = computeHttpApiCeiling({ clientData, serverData })
+
+    warnings.push(...httpApiResult.warnings)
+
+    if (httpApiResult.serverDetails.length > 0) {
+      const minDetail = httpApiResult.serverDetails.reduce((a, b) => a.maxValue < b.maxValue ? a : b)
+      ceilings.push({
+        nodeId: serverData.node.id,
+        maxThroughputRps: minDetail.maxValue,
+        limitingFactor: minDetail.dimension,
+        limitingFactorLabel: minDetail.label,
+        details: httpApiResult.serverDetails,
+      })
+    }
+
+    if (httpApiResult.clientDetails.length > 0) {
+      const minDetail = httpApiResult.clientDetails.reduce((a, b) => a.maxValue < b.maxValue ? a : b)
+      ceilings.push({
+        nodeId: clientData.node.id,
+        maxThroughputRps: minDetail.maxValue,
+        limitingFactor: minDetail.dimension,
+        limitingFactorLabel: minDetail.label,
+        details: httpApiResult.clientDetails,
       })
     }
   }
