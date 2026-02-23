@@ -1,89 +1,77 @@
-# Newbie Java Doctor
+# Newbie Java Doctor 🩺
 
-Java 全链路容量评估与瓶颈诊断工具。通过可视化拓扑图构建请求链路，自动计算各层理论天花板，精准定位性能瓶颈并给出最优配置建议。
+> 你的 Java 全链路性能调优沙盒与容量规划可视化推演平台。
 
-![Vue](https://img.shields.io/badge/Vue_3-4FC08D?logo=vuedotjs&logoColor=fff)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=fff)
-![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=fff)
+**[👉 点击这里直接体验 Live Demo ](https://null-object-0000.github.io/newbie-java-doctor/)** *(强烈建议直接体验！)*
 
-## 核心能力
+## 💡 为什么做这个项目？
 
-**可视化拓扑建模** — 拖拽节点 + 连线，快速构建请求链路拓扑图
+在真实的线上环境中，很多中初级开发者面对“接口响应慢”、“并发上不去”时，往往只能靠“猜”（盲目加机器、乱调 Tomcat 线程池或 JVM 参数）。现有的 APM 工具（如 SkyWalking）只能告诉你“现在发生了什么”，而压测工具只能告诉你“压到了多少”。
 
-**分层瓶颈诊断** — 从客户端 → 接入层 → 宿主容器 → 运行时 → 依赖层逐层分析
+**Newbie Java Doctor 填补了“容量静态规划”与“调优教学”之间的空白：**
 
-**天花板计算** — 自动计算带宽、PPS、端口、文件句柄、线程池等维度的理论最大 QPS
+1. **可视化排队论沙盒**：将玄学的性能调优转化为基于 Little's Law（利特尔法则）的标准化数学模型。
+2. **知其然，更知其所以然**：不仅给出参数建议，更直观展现一个 HTTP 请求是如何在 OS 内核、JVM、中间件中流转并被排队限制的。
+3. **为 AI 诊断提供“现场环境”**：打破大模型（ChatGPT/Gemini）排查故障时缺乏“架构拓扑与底层环境配置”上下文的尴尬。
 
-**智能配置推荐** — 基于 Little's Law 等模型推荐 JVM、Tomcat、内核参数
+## ✨ 核心能力
 
-**一键参数采集** — 提供脚本自动采集容器环境参数，导入即用
+* **可视化拓扑建模** — 拖拽节点 + 连线，零代码快速构建你的业务请求链路拓扑图。
+* **“What-if” 沙盒推演** — 手动调整 `maxThreads`、`somaxconn` 等参数，实时观察全链路 QPS 天花板的变化。
+* **分层瓶颈精准定位** — 自动计算带宽、端口、文件句柄、线程池等维度的理论最大 RPS，标红绝对瓶颈。
+* **一键环境探针采集** — 提供跨平台 Shell 脚本，一键提取目标 Linux 宿主机与 JVM 运行参数，生成 JSON 导入即用。
+* **智能配置推荐** — 针对现有缺口，自动生成系统级与应用级的最优参数调整建议。
 
-## 快速开始
+## 🗺️ 演进路线图 (Roadmap)
 
-```bash
-# 安装依赖
-npm install
+本项目正处于快速迭代中，未来的目标是将它打造为最懂底层环境的智能诊断平台：
 
-# 启动开发服务器
-npm run dev
-```
+* [x] **基础框架构建**：完成 Vue3 + AntV X6 可视化拖拽、Pinia 历史状态回溯机制。
+* [x] **核心引擎雏形**：实现基于 Client -> Host -> Runtime 基础链路的天花板推演算法。
+* [ ] **阶段一：打造 Aha Moment (进行中)**
+* [ ] 部署纯前端 Live Demo，实现开箱即用的免安装体验。
+* [ ] 内置经典故障沙盒模板（如：TCP全连接队列溢出卡顿、Tomcat 线程池耗尽雪崩、数据库连接池排队压垮网关等），一键导入体验。
 
-## 一键采集容器参数
 
-在目标容器（Linux）上执行以下命令，自动采集宿主容器层 + 运行时层参数，生成可导入的 JSON 文件。
+* [ ] **阶段二：引擎升维与调优知识库**
+* [ ] 将线性计算引擎重构为 DAG（有向无环图）遍历算法，支持多分支复杂依赖节点（Redis、MySQL、微服务）的反向并发压制计算。
+* [ ] 丰富参数科普抽屉（Knowledge Panel），直观展示各参数的作用、底层排队论影响，以及在 Linux/Java 中的查询与修改命令。
+
+
+* [ ] **阶段三：自动化与 AI 赋能**
+* [ ] **“一键 Prompt”导出**：将拓扑 JSON、瓶颈诊断结果与用户报错日志拼接，生成高质量 AI 诊断 Prompt，为大模型提供完美的现场环境上下文。
+* [ ] 开放标准 HTTP 导入协议，探索与成熟 APM 开源项目（如 SkyWalking/Prometheus）结合，直接读取线上真实 RT 与吞吐量进行推演。
+* [ ] 支持将单个拓扑图作为 Sub-graph（子图）暴露，供其他服务作为 HTTP Client 引入。
+
+
+
+## 🚀 快速开始
+
+### 🧲 一键采集容器参数 (生产环境探针)
+
+在目标服务器（Linux）上执行以下命令，自动探测宿主机（OS/内核限制）与运行时（JVM/Tomcat）参数，生成可导入的 JSON 文件。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/null-object-0000/newbie-java-doctor/main/scripts/collect-params.sh | bash -s -- -o topology.json
+
 ```
 
-<details>
-<summary>更多执行方式</summary>
+采集完成后，在 Web 页面点击 **「导入」** 选择 JSON 文件，瞬间还原线上环境约束！
 
-**使用 wget：**
+## 🏗️ 链路分层模型
 
-```bash
-wget -qO- https://raw.githubusercontent.com/null-object-0000/newbie-java-doctor/main/scripts/collect-params.sh | bash -s -- -o topology.json
-```
+为保证推演的严谨性，项目将链路拆解为以下逻辑层：
 
-**本地执行：**
+| 逻辑分层 | 描述说明 | 涵盖参数举例 |
+| --- | --- | --- |
+| **Client Layer** | 负载目标定义 | 并发用户数、目标吞吐量 (RPS)、预期失败率 |
+| **Access Layer** | 接入网关层 | Tengine / Nginx 工作进程数、连接数限制 |
+| **Host Layer** | 宿主硬件与内核约束 | vCPU、内存、NIC 带宽、TCP 队列(somaxconn)、文件句柄(fs.file-max) |
+| **Runtime Layer** | 应用程序运行时 | JDK 版本、GC 吞吐量目标、Tomcat maxThreads / acceptCount |
+| **Dependency Layer** | 外部依赖调用 | Redis 连接池、MySQL 连接池、下游 HTTP 接口耗时 |
 
-```bash
-bash scripts/collect-params.sh -o topology.json
-```
+> 详见 [LinkLayer.md](https://www.google.com/search?q=./LinkLayer.md) 和 [Reference.md](https://www.google.com/search?q=./Reference.md)。
 
-</details>
+## 📄 License
 
-### 采集范围
-
-| 层 | 采集项 |
-|---|---|
-| 宿主容器层 | vCPU、内存、磁盘类型、NIC 带宽、OS/内核版本、TCP 参数、文件句柄限制 |
-| 运行时层 | JDK 版本、GC 类型、JVM 启动参数、Tomcat 线程/连接配置 |
-
-采集完成后，在 Web 页面点击 **「导入」** 选择 JSON 文件即可。IOPS 等难以自动探测的参数可导入后在页面手动调整。
-
-## 链路分层模型
-
-| 层 | 说明 |
-|---|---|
-| Client Layer | 负载目标定义（并发数、目标吞吐量、预期失败率） |
-| Access Layer | 接入网关（Tengine / Nginx / API Gateway） |
-| Host Layer | 宿主容器硬件约束与内核参数 |
-| Runtime Layer | JVM 配置、Tomcat 线程池、日志级别 |
-| Dependency Layer | 外部依赖（Redis、数据库、HTTP API） |
-
-详见 [LinkLayer.md](./LinkLayer.md) 和 [Reference.md](./Reference.md)。
-
-## 技术栈
-
-| 类别 | 技术 |
-|---|---|
-| 框架 | Vue 3 + TypeScript |
-| 状态管理 | Pinia |
-| UI 组件 | Naive UI |
-| 拓扑可视化 | AntV X6 |
-| 构建工具 | Vite |
-
-## License
-
-Apache-2.0
+[Apache-2.0](https://www.google.com/search?q=./LICENSE)
