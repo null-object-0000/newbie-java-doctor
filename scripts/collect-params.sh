@@ -63,8 +63,29 @@ TOMCAT_DETECTED=false
 
 echo "[collect-params] 采集 CPU / 内存 / 架构..." >&2
 
-# vCPU
-VCPU=$(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo "1")
+# vCPU — 优先读取 cgroup 限制（容器内），fallback 到 nproc（宿主机）
+VCPU=""
+# cgroup v2: /sys/fs/cgroup/cpu.max → "QUOTA PERIOD" or "max PERIOD"
+if [ -r /sys/fs/cgroup/cpu.max ]; then
+  CG2_CPU=$(cat /sys/fs/cgroup/cpu.max 2>/dev/null || true)
+  CG2_QUOTA=$(echo "$CG2_CPU" | awk '{print $1}')
+  CG2_PERIOD=$(echo "$CG2_CPU" | awk '{print $2}')
+  if [ "$CG2_QUOTA" != "max" ] && [ -n "$CG2_QUOTA" ] && [ -n "$CG2_PERIOD" ] && [ "$CG2_PERIOD" -gt 0 ] 2>/dev/null; then
+    VCPU=$(awk "BEGIN {v=$CG2_QUOTA/$CG2_PERIOD; printf \"%.0f\", (v<1)?1:v}")
+  fi
+fi
+# cgroup v1: cpu.cfs_quota_us / cpu.cfs_period_us
+if [ -z "$VCPU" ] && [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then
+  CG1_QUOTA=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || echo "-1")
+  CG1_PERIOD=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null || echo "100000")
+  if [ "$CG1_QUOTA" -gt 0 ] 2>/dev/null && [ "$CG1_PERIOD" -gt 0 ] 2>/dev/null; then
+    VCPU=$(awk "BEGIN {v=$CG1_QUOTA/$CG1_PERIOD; printf \"%.0f\", (v<1)?1:v}")
+  fi
+fi
+# fallback: 宿主机 CPU 数
+if [ -z "$VCPU" ]; then
+  VCPU=$(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null || echo "1")
+fi
 
 # 单核频率 (GHz)
 CPU_MHZ=""
@@ -81,9 +102,32 @@ else
   CPU_GHZ="2.5"
 fi
 
-# 内存 (GB)
-MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo "0")
-MEM_GB=$(awk "BEGIN {printf \"%.0f\", ${MEM_KB}/1048576}")
+# 内存 (bytes) — 优先读取 cgroup 限制（容器内），fallback 到 /proc/meminfo（宿主机）
+MEM_BYTES=""
+# cgroup v2: /sys/fs/cgroup/memory.max
+if [ -r /sys/fs/cgroup/memory.max ]; then
+  CG2_MEM=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || true)
+  if [ "$CG2_MEM" != "max" ] && [ -n "$CG2_MEM" ] && [ "$CG2_MEM" -gt 0 ] 2>/dev/null; then
+    MEM_BYTES="$CG2_MEM"
+  fi
+fi
+# cgroup v1: /sys/fs/cgroup/memory/memory.limit_in_bytes
+if [ -z "$MEM_BYTES" ] && [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+  CG1_MEM=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || true)
+  # 值超过宿主物理内存说明未设限（内核常返回一个极大值如 9223372036854771712）
+  HOST_MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo "0")
+  HOST_MEM_BYTES=$(awk "BEGIN {printf \"%.0f\", ${HOST_MEM_KB}*1024}")
+  if [ -n "$CG1_MEM" ] && [ "$CG1_MEM" -gt 0 ] 2>/dev/null && [ "$CG1_MEM" -lt "$HOST_MEM_BYTES" ] 2>/dev/null; then
+    MEM_BYTES="$CG1_MEM"
+  fi
+fi
+# fallback: 宿主机内存
+if [ -n "$MEM_BYTES" ]; then
+  MEM_GB=$(awk "BEGIN {printf \"%.0f\", ${MEM_BYTES}/1073741824}")
+else
+  MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo "0")
+  MEM_GB=$(awk "BEGIN {printf \"%.0f\", ${MEM_KB}/1048576}")
+fi
 if [ "$MEM_GB" -lt 1 ] 2>/dev/null; then
   MEM_GB=1
 fi
@@ -421,11 +465,14 @@ echo "┌───────────────────────�
 echo "│ 容器参数采集完成" >&2
 echo "├─────────────────────────────────────────────────────────" >&2
 echo "│ 宿主容器层 · 环境约束" >&2
-echo "│   vCPU:     ${VCPU}" >&2
+CPU_SRC="host"; [ -n "${CG2_QUOTA:-}" ] && [ "${CG2_QUOTA:-max}" != "max" ] && CPU_SRC="cgroup-v2"
+[ "$CPU_SRC" = "host" ] && [ "${CG1_QUOTA:--1}" -gt 0 ] 2>/dev/null && CPU_SRC="cgroup-v1"
+MEM_SRC="host"; [ -n "${MEM_BYTES:-}" ] && MEM_SRC="cgroup"
+echo "│   vCPU:     ${VCPU}  (来源: ${CPU_SRC})" >&2
 if $CPU_FREQ_DETECTED; then
   echo "│   频率:     ${CPU_GHZ} GHz" >&2
 fi
-echo "│   内存:     ${MEM_GB} GB" >&2
+echo "│   内存:     ${MEM_GB} GB  (来源: ${MEM_SRC})" >&2
 echo "│   架构:     ${ARCH} (${ARCH_RAW})" >&2
 if $DISK_DETECTED; then
   echo "│   磁盘类型: ${DISK_TYPE}" >&2
