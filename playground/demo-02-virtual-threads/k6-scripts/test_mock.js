@@ -13,6 +13,6 @@ export const options = {
 };
 
 export default function () {
-  const res = http.get('http://java-bff:8080/api/goods-detail');
+  const res = http.get('http://slow-api:8080/api/logistics');
   check(res, { 'status was 200': (r) => r.status === 200 });
 }

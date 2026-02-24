@@ -16,7 +16,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      JAVA_OPTS: ${JAVA_OPTS:--Xmx1536m}
+      JAVA_OPTS: ${JAVA_OPTS:--Xms5120m -Xmx5120m -XX:+UseZGC -Djdk.tracePinnedThreads=short}
       TOMCAT_MAX_THREADS: ${TOMCAT_MAX_THREADS:-10000}
       TOMCAT_MIN_SPARE: ${TOMCAT_MIN_SPARE:-1000}
       TOMCAT_ACCEPT_COUNT: ${TOMCAT_ACCEPT_COUNT:-10000}
