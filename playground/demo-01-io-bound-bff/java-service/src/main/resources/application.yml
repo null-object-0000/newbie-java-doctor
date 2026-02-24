@@ -2,6 +2,10 @@ server:
   port: 8080
   tomcat:
     threads:
-      max: 200 # 故意保留 200 线程，作为绝对瓶颈点
-      min-spare: 50
-    accept-count: 100
+      max: ${TOMCAT_MAX_THREADS:200}
+      min-spare: ${TOMCAT_MIN_SPARE:50}
+    accept-count: ${TOMCAT_ACCEPT_COUNT:100}
+spring:
+  threads:
+    virtual:
+      enabled: ${VIRTUAL_THREADS:false}

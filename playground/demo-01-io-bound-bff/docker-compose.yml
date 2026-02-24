@@ -14,6 +14,11 @@ services:
     build: ./java-service
     ports:
       - "8080:8080"
+    environment:
+      TOMCAT_MAX_THREADS: ${TOMCAT_MAX_THREADS:-200}
+      TOMCAT_MIN_SPARE: ${TOMCAT_MIN_SPARE:-50}
+      TOMCAT_ACCEPT_COUNT: ${TOMCAT_ACCEPT_COUNT:-100}
+      VIRTUAL_THREADS: ${VIRTUAL_THREADS:-false}
     depends_on:
       - slow-api
 
