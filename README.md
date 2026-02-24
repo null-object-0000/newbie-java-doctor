@@ -33,8 +33,11 @@
 如果你想直接诊断自己真实的线上环境，可以在目标服务器（Linux）上执行以下命令，自动探测宿主机（OS/内核限制）与运行时（JVM/Tomcat）参数，生成可导入的 JSON 文件：
 
 ```bash
+# GitHub
 curl -fsSL https://raw.githubusercontent.com/null-object-0000/newbie-java-doctor/main/scripts/collect-params.sh | bash -s -- -o topology.json
 
+# Gitee（国内镜像，访问更快）
+curl -fsSL https://gitee.com/null_object_0000/newbie-java-doctor/raw/main/scripts/collect-params.sh | bash -s -- -o topology.json
 ```
 
 采集完成后，在 Web 页面点击 **「导入」** 选择刚刚生成的 JSON 文件，即可瞬间还原线上环境约束并开始推演！
