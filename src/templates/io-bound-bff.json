@@ -1,0 +1,169 @@
+{
+    "nodes": [
+        {
+            "id": "n-client-default",
+            "layerId": "client",
+            "label": "客户端层",
+            "nodeSource": "default",
+            "x": 0,
+            "y": 0,
+            "constraints": {},
+            "objectives": {
+                "businessScenario": "io",
+                "concurrentUsers": 1000,
+                "targetThroughputRps": 1000,
+                "expectedFailureRatePercent": 0
+            },
+            "tunables": {}
+        },
+        {
+            "id": "n-host-default",
+            "layerId": "host",
+            "label": "宿主容器层",
+            "nodeSource": "default",
+            "x": 0,
+            "y": 250,
+            "constraints": {
+                "spec": {
+                    "vCpu": 4,
+                    "cpuFreqGhz": 2.5,
+                    "memoryGb": 8,
+                    "architecture": "x86"
+                },
+                "storage": {
+                    "diskType": "ssd",
+                    "iopsLimit": 10000,
+                    "throughputMbPerSec": 500
+                },
+                "network": {
+                    "nicBandwidthGbps": 10,
+                    "ppsLimit": 1000000
+                },
+                "os": {
+                    "osVersion": "AlmaLinux 9",
+                    "kernelVersion": "5.14"
+                }
+            },
+            "objectives": {},
+            "tunables": {
+                "net": {
+                    "tcpTwReuse": 1,
+                    "ipLocalPortRange": "32768 60999",
+                    "tcpMaxTwBuckets": 5000
+                },
+                "fs": {
+                    "ulimitN": 65535,
+                    "fsNrOpen": 65535,
+                    "fsFileMax": 2097152
+                }
+            }
+        },
+        {
+            "id": "n-runtime-default",
+            "layerId": "runtime",
+            "label": "运行时层",
+            "nodeSource": "default",
+            "x": 0,
+            "y": 500,
+            "constraints": {
+                "jdkVersion": "21"
+            },
+            "objectives": {
+                "logLinesPerRequest": 5,
+                "logSizeBytesPerRequest": 512
+            },
+            "tunables": {
+                "gc": "G1GC",
+                "jvmOptions": "-Xms4g -Xmx4g",
+                "virtualThreadsEnabled": false,
+                "tomcatMaxThreads": 200,
+                "tomcatMinSpareThreads": 10,
+                "tomcatMaxConnections": 10000,
+                "tomcatAcceptCount": 100,
+                "logbackMaxFileSize": "100MB",
+                "logbackMaxHistory": 30,
+                "logbackQueueSize": 256,
+                "logbackDiscardingThreshold": 20,
+                "logbackMaxFlushTimeMs": 5000,
+                "logbackNeverBlock": false
+            }
+        },
+        {
+            "id": "n-1771903495939-ylvsle5",
+            "layerId": "dependency",
+            "label": "三方接口 — Server",
+            "nodeSource": "user",
+            "dependencyKind": "http_api",
+            "dependencyRole": "server",
+            "dependencyGroupId": "dep-1771903495939-lc2zqo9",
+            "x": -332,
+            "y": 687.376220703125,
+            "constraints": {
+                "avgRtMs": 500,
+                "rateLimitQps": 0,
+                "networkEnv": "intra_dc"
+            },
+            "objectives": {},
+            "tunables": {}
+        },
+        {
+            "id": "n-1771903495939-9918hfl",
+            "layerId": "dependency",
+            "label": "三方接口 — Client",
+            "nodeSource": "user",
+            "dependencyKind": "http_api",
+            "dependencyRole": "client",
+            "dependencyGroupId": "dep-1771903495939-lc2zqo9",
+            "x": 0,
+            "y": 687.376220703125,
+            "constraints": {
+                "clientType": "apache"
+            },
+            "objectives": {},
+            "tunables": {
+                "apache": {
+                    "maxConnPerRoute": 5,
+                    "maxConnTotal": 25,
+                    "connectTimeoutMs": 10000,
+                    "socketTimeoutMs": 10000
+                },
+                "okhttp": {
+                    "maxIdleConnections": 5,
+                    "keepAliveDurationMs": 300000,
+                    "connectTimeoutMs": 10000,
+                    "readTimeoutMs": 10000
+                },
+                "javaHttp": {
+                    "version": "HTTP_2",
+                    "connectTimeoutMs": 0
+                }
+            }
+        }
+    ],
+    "edges": [
+        {
+            "id": "e-n-client-default-n-host-default",
+            "source": "n-client-default",
+            "target": "n-host-default",
+            "params": {
+                "networkEnv": "intra_dc",
+                "messageSizeBytes": 1024
+            }
+        },
+        {
+            "id": "e-n-host-default-n-runtime-default",
+            "source": "n-host-default",
+            "target": "n-runtime-default"
+        },
+        {
+            "id": "e-n-1771903495939-9918hfl-n-1771903495939-ylvsle5",
+            "source": "n-1771903495939-9918hfl",
+            "target": "n-1771903495939-ylvsle5"
+        },
+        {
+            "id": "e-n-runtime-default-n-1771903495939-9918hfl",
+            "source": "n-runtime-default",
+            "target": "n-1771903495939-9918hfl"
+        }
+    ]
+}

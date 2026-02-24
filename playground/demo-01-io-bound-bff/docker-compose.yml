@@ -1,0 +1,26 @@
+services:
+  # 1. 模拟缓慢的下游第三方物流 API (固定 500ms 延迟)
+  slow-api:
+    image: wiremock/wiremock:latest
+    command: >
+      --global-response-templating  --async-response-enabled=true  --async-response-threads=200
+    volumes:
+      - ./mock-mappings:/home/wiremock/mappings
+    expose:
+      - "8080"
+
+  # 2. 你的被测网关聚合服务 (Tomcat 瓶颈在此)
+  java-bff:
+    build: ./java-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - slow-api
+
+  # 3. K6 发压节点 (免安装，随用随弃)
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./k6-scripts:/scripts
+    profiles:
+      - loadtest # 设为 profile，防止 docker-compose up -d 自动执行
