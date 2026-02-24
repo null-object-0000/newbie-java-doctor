@@ -117,7 +117,7 @@
             "x": 0,
             "y": 687.376220703125,
             "constraints": {
-                "clientType": "apache"
+                "clientType": "java_http"
             },
             "objectives": {},
             "tunables": {

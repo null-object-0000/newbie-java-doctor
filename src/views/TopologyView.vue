@@ -14,13 +14,14 @@ import {
 } from '@/registry/layers'
 import type { SchemaCategory } from '@/registry/layers'
 import { getByPath } from '@/registry/schemaBuild'
-import { NButton, NButtonGroup, NCode, useDialog, useMessage } from 'naive-ui'
+import { NButton, NButtonGroup, NCode, NDropdown, useDialog, useMessage } from 'naive-ui'
 import TopologyDiagram from '@/components/TopologyDiagram.vue'
 import NodeListPanel from '@/components/NodeListPanel.vue'
 import NodeEditorPanel from '@/components/NodeEditorPanel.vue'
 import EdgeEditorPanel from '@/components/EdgeEditorPanel.vue'
 import AnalysisReportPanel from '@/components/AnalysisReportPanel.vue'
 import type { TopologyNode, TopologyEdge } from '@/types/layers'
+import { demoTemplates } from '@/templates'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -188,6 +189,37 @@ function handleFileImport(event: Event) {
   reader.readAsText(file)
 }
 
+// ========== 案例模板 ==========
+
+const templateOptions = demoTemplates.map((t) => ({
+  label: t.label,
+  key: t.key,
+}))
+
+function handleTemplateSelect(key: string) {
+  const tpl = demoTemplates.find((t) => t.key === key)
+  if (!tpl) return
+  dialog.warning({
+    title: '加载案例模板',
+    content: `将加载「${tpl.label}」，当前拓扑数据会被替换（可通过撤销恢复）。`,
+    positiveText: '确认加载',
+    negativeText: '取消',
+    onPositiveClick: () => loadTemplate(tpl),
+  })
+}
+
+function loadTemplate(tpl: (typeof demoTemplates)[number]) {
+  const result = store.importFromJson(JSON.stringify(tpl.data))
+  if (result.ok) {
+    editingNode.value = null
+    editingEdge.value = null
+    analysisStore.analyze()
+    message.success('案例已加载，分析完成')
+  } else {
+    message.error(`加载失败：${result.message}`)
+  }
+}
+
 /** 当前编辑的节点（点击拓扑图节点时设置；依赖层需据此取 kind 与节点数据） */
 const editingNode = ref<TopologyNode | null>(null)
 /** 当前编辑的连线（点击拓扑图连线时设置） */
@@ -303,6 +335,9 @@ function onDropFromPalette(payload: DropPayload) {
             </button>
           </div>
           <div class="header-actions">
+            <NDropdown :options="templateOptions" @select="handleTemplateSelect">
+              <NButton size="tiny" secondary>案例模板</NButton>
+            </NDropdown>
             <NButtonGroup size="tiny">
               <NButton secondary @click="triggerImport">导入</NButton>
               <NButton secondary @click="downloadJson">导出</NButton>
@@ -358,13 +393,31 @@ function onDropFromPalette(payload: DropPayload) {
           <AnalysisReportPanel @close="handleClearResult" />
         </div>
         <div v-else class="panel-placeholder">
-          <div class="placeholder-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <div class="template-section">
+            <div class="template-section-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /></svg>
+              <span>案例模板</span>
+            </div>
+            <p class="template-section-desc">选择一个经典故障案例，一键加载并自动分析瓶颈</p>
+            <div class="template-card-list">
+              <button
+                v-for="tpl in demoTemplates"
+                :key="tpl.key"
+                class="template-card"
+                @click="handleTemplateSelect(tpl.key)"
+              >
+                <span class="template-card-label">{{ tpl.label }}</span>
+                <span class="template-card-desc">{{ tpl.description }}</span>
+              </button>
+            </div>
+          </div>
+          <div class="placeholder-hint">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 16v-4" /><path d="M12 8h.01" />
             </svg>
+            <span>或点击左侧拓扑图中的节点 / 连线编辑属性</span>
           </div>
-          <span class="placeholder-text">点击节点或连线编辑属性</span>
         </div>
       </aside>
     </div>
@@ -492,22 +545,81 @@ function onDropFromPalette(payload: DropPayload) {
   flex: 1;
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 1.25rem;
+  overflow-y: auto;
+}
+
+.template-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.template-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.template-section-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.template-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.template-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: all var(--transition-fast);
+}
+
+.template-card:hover {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 5%, var(--bg-subtle));
+  box-shadow: var(--shadow-xs);
+}
+
+.template-card-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.template-card-desc {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.placeholder-hint {
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  padding: 2rem;
-}
-
-.placeholder-icon {
+  gap: 0.375rem;
+  font-size: 0.75rem;
   color: var(--text-faint);
-  opacity: 0.5;
-}
-
-.placeholder-text {
-  font-size: 0.8125rem;
-  color: var(--text-faint);
-  text-align: center;
-  line-height: 1.5;
 }
 
 .header-actions {
