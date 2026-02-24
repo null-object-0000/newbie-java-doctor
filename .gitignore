@@ -40,3 +40,6 @@ __screenshots__/
 .agent
 .agents
 skills-lock.json
+
+# Playground benchmark results
+playground/*/results/

@@ -63,6 +63,33 @@ curl -fsSL https://gitee.com/null_object_0000/newbie-java-doctor/raw/main/script
 
 关键参数已外置为环境变量，**修改后 `docker-compose up -d` 即可重启，无需 rebuild**，可自由进行对比实验（如开启虚拟线程、调整线程池大小等）。详见 [`playground/demo-01-io-bound-bff/README.md`](./playground/demo-01-io-bound-bff/README.md)。
 
+### 案例 02：虚拟线程 vs 平台线程 — 资源效率对比
+
+> 在不同硬件约束（1C2G / 2C4G / 4C8G / 8C16G）下，对比 JDK 21 虚拟线程与传统平台线程的并发吞吐差异，验证"虚拟线程在 I/O 密集场景下突破线程池天花板"的核心命题。
+
+**验证流程：**
+
+1. 一键跑完全部 8 组对照实验（需 Bash 环境）：
+   ```bash
+   cd playground/demo-02-virtual-threads
+   chmod +x run-benchmark.sh
+   ./run-benchmark.sh
+   ```
+2. 或手动对比单组实验：
+   ```bash
+   cd playground/demo-02-virtual-threads
+   # 平台线程 (2C4G)
+   CONTAINER_CPUS=2 CONTAINER_MEMORY=4g JAVA_OPTS="-Xmx1536m" VIRTUAL_THREADS=false docker-compose up -d
+   docker-compose run --rm k6 run /scripts/test.js
+   docker-compose down -v
+   # 虚拟线程 (2C4G)
+   CONTAINER_CPUS=2 CONTAINER_MEMORY=4g JAVA_OPTS="-Xmx1536m" VIRTUAL_THREADS=true docker-compose up -d
+   docker-compose run --rm k6 run /scripts/test.js
+   docker-compose down -v
+   ```
+
+详见 [`playground/demo-02-virtual-threads/README.md`](./playground/demo-02-virtual-threads/README.md)。
+
 ## 🗺️ 演进路线图 (Roadmap)
 
 本项目正处于快速迭代中，未来的目标是将它打造为最懂底层环境的智能诊断平台：

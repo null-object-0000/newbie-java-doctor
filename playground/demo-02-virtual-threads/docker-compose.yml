@@ -1,0 +1,40 @@
+services:
+  # 1. 模拟缓慢的下游第三方 API (固定 500ms 延迟)
+  #    给足资源，确保它不会成为瓶颈
+  slow-api:
+    image: openresty/openresty:alpine
+    volumes:
+      - ./mock-nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+    expose:
+      - "8080"
+
+  # 2. 被测 Java 聚合服务 — CPU / 内存 / 线程模式均可通过环境变量控制
+  java-bff:
+    build: ./java-service
+    cpus: ${CONTAINER_CPUS:-4}
+    mem_limit: ${CONTAINER_MEMORY:-8g}
+    ports:
+      - "8080:8080"
+    environment:
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx1536m}
+      TOMCAT_MAX_THREADS: ${TOMCAT_MAX_THREADS:-10000}
+      TOMCAT_MIN_SPARE: ${TOMCAT_MIN_SPARE:-1000}
+      TOMCAT_ACCEPT_COUNT: ${TOMCAT_ACCEPT_COUNT:-10000}
+      VIRTUAL_THREADS: ${VIRTUAL_THREADS:-true}
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://localhost:8080/api/goods-detail" ]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  # 3. K6 发压节点
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./k6-scripts:/scripts
+    depends_on:
+      java-bff:
+        condition: service_healthy
+    profiles:
+      - loadtest

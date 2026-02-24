@@ -468,11 +468,11 @@ echo "│ 宿主容器层 · 环境约束" >&2
 CPU_SRC="host"; [ -n "${CG2_QUOTA:-}" ] && [ "${CG2_QUOTA:-max}" != "max" ] && CPU_SRC="cgroup-v2"
 [ "$CPU_SRC" = "host" ] && [ "${CG1_QUOTA:--1}" -gt 0 ] 2>/dev/null && CPU_SRC="cgroup-v1"
 MEM_SRC="host"; [ -n "${MEM_BYTES:-}" ] && MEM_SRC="cgroup"
-echo "│   vCPU:     ${VCPU}  (来源: ${CPU_SRC})" >&2
+echo "│   vCPU:     ${VCPU}" >&2
 if $CPU_FREQ_DETECTED; then
   echo "│   频率:     ${CPU_GHZ} GHz" >&2
 fi
-echo "│   内存:     ${MEM_GB} GB  (来源: ${MEM_SRC})" >&2
+echo "│   内存:     ${MEM_GB} GB" >&2
 echo "│   架构:     ${ARCH} (${ARCH_RAW})" >&2
 if $DISK_DETECTED; then
   echo "│   磁盘类型: ${DISK_TYPE}" >&2
