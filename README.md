@@ -4,7 +4,7 @@
 
 **[👉 点击这里直接体验 Live Demo ](https://null-object-0000.github.io/newbie-java-doctor/)**
 
-![Demo](./demo.png)`
+![Demo](./demo.png)
 
 ## 💡 为什么做这个项目？
 
@@ -22,6 +22,8 @@
 * **“What-if” 沙盒推演** — 手动调整 `maxThreads`、`somaxconn` 等参数，实时观察全链路 QPS 天花板的变化。
 * **分层瓶颈精准定位** — 自动计算带宽、端口、文件句柄、线程池等维度的理论最大 RPS，标红绝对瓶颈。
 * **智能配置推荐** — 针对现有缺口，自动生成系统级与应用级的最优参数调整建议。
+* **经典案例模板** — 内置典型故障场景（如慢依赖拖垮线程池），一键加载拓扑并自动分析瓶颈，开箱即用。
+* **靶场压测验证** — 提供真实 Docker 化压测沙盒（Java 服务 + K6），让你亲手验证理论推演与实际吞吐量的吻合度。
 * **一键环境探针采集** — 提供跨平台 Shell 脚本，一键提取目标 Linux 宿主机与 JVM 运行参数，生成 JSON 导入即用。
 
 ## 🚀 快速开始与探针采集
@@ -37,6 +39,27 @@ curl -fsSL https://raw.githubusercontent.com/null-object-0000/newbie-java-doctor
 
 采集完成后，在 Web 页面点击 **「导入」** 选择刚刚生成的 JSON 文件，即可瞬间还原线上环境约束并开始推演！
 
+## 🎯 靶场演练 (Playground)
+
+项目内置了可一键启动的 Docker 化压测靶场，用于验证理论推演与真实吞吐量的吻合度。
+
+### 案例 01：被慢依赖拖垮的聚合服务
+
+> 模拟经典线上故障：下游第三方 API 响应缓慢 (500ms)，导致 Tomcat 线程池迅速耗尽，并发暴跌。
+
+**验证流程：**
+
+1. 在 [Live Demo](https://null-object-0000.github.io/newbie-java-doctor/) 中点击 **「案例模板」** 加载本案例，理论天花板为 **400 QPS**。
+2. 启动靶场并注入流量：
+   ```bash
+   cd playground/demo-01-io-bound-bff
+   docker-compose up -d
+   docker-compose run --rm k6 run /scripts/test.js
+   ```
+3. K6 报告中的实际吞吐量将精准卡在 **~400 RPS**，与理论推演吻合。
+
+关键参数已外置为环境变量，**修改后 `docker-compose up -d` 即可重启，无需 rebuild**，可自由进行对比实验（如开启虚拟线程、调整线程池大小等）。详见 [`playground/demo-01-io-bound-bff/README.md`](./playground/demo-01-io-bound-bff/README.md)。
+
 ## 🗺️ 演进路线图 (Roadmap)
 
 本项目正处于快速迭代中，未来的目标是将它打造为最懂底层环境的智能诊断平台：
@@ -46,7 +69,9 @@ curl -fsSL https://raw.githubusercontent.com/null-object-0000/newbie-java-doctor
 
 * [ ] **阶段一：打造 Aha Moment (进行中)**
     * [x] 部署纯前端 Live Demo，实现开箱即用的免安装体验。
-    * [ ] 内置经典故障沙盒模板（如：TCP全连接队列溢出卡顿、Tomcat 线程池耗尽雪崩、数据库连接池排队压垮网关等），一键导入体验。
+    * [x] 内置经典故障沙盒模板，首个案例「慢依赖拖垮中间层 — Tomcat 线程池瓶颈」已上线，支持一键加载并自动分析。
+    * [ ] 持续补充更多经典故障模板（如：TCP 全连接队列溢出卡顿、数据库连接池排队压垮网关等）。
+    * [x] 提供 Docker 化压测靶场（`playground/`），用真实流量验证理论推演结果，支持通过环境变量自由调参进行对比实验。
 
 * [ ] **阶段二：引擎升维与调优知识库**
     * [ ] 将线性计算引擎重构为 DAG（有向无环图）遍历算法，支持多分支复杂依赖节点（Redis、MySQL、微服务）的反向并发压制计算。
@@ -96,4 +121,4 @@ npm run dev
 
 ## 📄 License
 
-本项目基于 [Apache-2.0](https://www.google.com/search?q=./LICENSE) 协议开源。
+本项目基于 [Apache-2.0](./LICENSE) 协议开源。
