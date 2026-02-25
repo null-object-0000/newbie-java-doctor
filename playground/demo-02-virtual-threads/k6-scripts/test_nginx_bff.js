@@ -4,16 +4,16 @@ import { check } from 'k6';
 export const options = {
   noUsageReport: true,
   discardResponseBodies: true,
-  vus: 8000,
+  vus: 6000,
   duration: '30s',
   thresholds: {
     http_req_failed: ['rate<0.01'],
-    http_req_duration: [{ threshold: 'avg<550', abortOnFail: true, delayAbortEval: '10s' }],
+    http_req_duration: [{ threshold: 'avg<750', abortOnFail: true, delayAbortEval: '10s' }],
   },
   summaryTrendStats: ['avg', 'min', 'max', 'p(95)', 'p(99)', 'count'],
 };
 
 export default function () {
-  const res = http.get('http://slow-api:8080/api/logistics');
+  const res = http.get('http://nginx-bff:8080/api/goods-detail');
   check(res, { 'status is 200': (r) => r.status === 200 });
 }

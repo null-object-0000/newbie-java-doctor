@@ -2,14 +2,15 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 export const options = {
-  stages: [
-    { duration: '0s', target: 10000 },
-    { duration: '30s', target: 10000 },
-    { duration: '0s', target: 0 },
-  ],
+  noUsageReport: true,
+  discardResponseBodies: true,
+  vus: 4000,
+  duration: '30s',
   thresholds: {
-    checks: [{ threshold: 'rate>=0', abortOnFail: false }],
+    http_req_failed: ['rate<0.01'],
+    http_req_duration: [{ threshold: 'avg<750', abortOnFail: true, delayAbortEval: '10s' }],
   },
+  summaryTrendStats: ['avg', 'min', 'max', 'p(95)', 'p(99)', 'count'],
 };
 
 export default function () {

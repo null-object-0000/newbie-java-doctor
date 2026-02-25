@@ -2,6 +2,8 @@ services:
   # 1. 模拟缓慢的下游第三方物流 API (固定 500ms 延迟)
   slow-api:
     image: openresty/openresty:alpine
+    cpus: 2
+    mem_limit: 4g
     volumes:
       - ./mock-nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
     expose:
@@ -19,11 +21,20 @@ services:
       VIRTUAL_THREADS: ${VIRTUAL_THREADS:-false}
     depends_on:
       - slow-api
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://localhost:8080/api/goods-detail" ]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
 
-  # 3. K6 发压节点 (免安装，随用随弃)
+  # 3. K6 发压节点
   k6:
     image: grafana/k6:latest
     volumes:
       - ./k6-scripts:/scripts
+    depends_on:
+      java-bff:
+        condition: service_healthy
     profiles:
       - loadtest # 设为 profile，防止 docker-compose up -d 自动执行

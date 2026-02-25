@@ -1,10 +1,7 @@
 services:
   # 1. 模拟缓慢的下游第三方 API (固定 500ms 延迟)
-  #    给足资源，确保它不会成为瓶颈
   slow-api:
     image: openresty/openresty:alpine
-    cpus: 2
-    mem_limit: 4g
     volumes:
       - ./mock-nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
     expose:
@@ -18,17 +15,36 @@ services:
     ports:
       - "8080:8080"
     environment:
-      JAVA_OPTS: ${JAVA_OPTS:--Xms5120m -Xmx5120m -XX:+UseZGC -Djdk.tracePinnedThreads=short}
+      JAVA_OPTS: ${JAVA_OPTS:--Xms5120m -Xmx5120m -XX:+UseZGC}
       TOMCAT_MAX_THREADS: ${TOMCAT_MAX_THREADS:-10000}
       TOMCAT_MIN_SPARE: ${TOMCAT_MIN_SPARE:-1000}
       TOMCAT_ACCEPT_COUNT: ${TOMCAT_ACCEPT_COUNT:-10000}
       VIRTUAL_THREADS: ${VIRTUAL_THREADS:-true}
+      HTTP_CLIENT: ${HTTP_CLIENT:-jdk}
+    depends_on:
+      - slow-api
     healthcheck:
       test: [ "CMD", "curl", "-sf", "http://localhost:8080/api/goods-detail" ]
       interval: 5s
       timeout: 10s
       retries: 30
       start_period: 30s
+
+  # 2.5 Nginx BFF：仅做转发，用于与 Java BFF 对比
+  nginx-bff:
+    image: openresty/openresty:alpine
+    volumes:
+      - ./nginx-bff/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+    expose:
+      - "8080"
+    depends_on:
+      - slow-api
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://localhost:8080/api/goods-detail" ]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 5s
 
   # 3. K6 发压节点
   k6:
