@@ -1,11 +1,9 @@
 services:
   # 1. 模拟缓慢的下游第三方物流 API (固定 500ms 延迟)
   slow-api:
-    image: wiremock/wiremock:latest
-    command: >
-      --global-response-templating  --async-response-enabled=true  --async-response-threads=200
+    image: openresty/openresty:alpine
     volumes:
-      - ./mock-mappings:/home/wiremock/mappings
+      - ./mock-nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
     expose:
       - "8080"
 
