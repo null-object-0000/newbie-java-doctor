@@ -69,13 +69,6 @@ curl -fsSL https://gitee.com/null_object_0000/newbie-java-doctor/raw/main/script
 
 **验证流程：**
 
-1. 一键跑完全部 8 组对照实验（需 Bash 环境）：
-   ```bash
-   cd playground/demo-02-virtual-threads
-   chmod +x run-benchmark.sh
-   ./run-benchmark.sh
-   ```
-2. 或手动对比单组实验：
    ```bash
    cd playground/demo-02-virtual-threads
    # 平台线程 (2C4G)

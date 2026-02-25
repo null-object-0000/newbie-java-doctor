@@ -36,23 +36,6 @@
 
 ## 🚀 快速开始
 
-### 方式一：一键全自动（推荐，需要 Bash 环境）
-
-```bash
-cd playground/demo-02-virtual-threads
-chmod +x run-benchmark.sh
-
-# 跑全部 4 档 × 2 模式 = 8 轮实验 (总耗时约 20-30 分钟)
-./run-benchmark.sh
-
-# 或只跑某一档
-./run-benchmark.sh 2c4g
-```
-
-脚本会自动遍历所有配置、启动/停止服务、采集 K6 数据，最终输出一张汇总对比表，所有原始日志保存在 `results/` 目录。
-
-### 方式二：手动实验
-
 <details>
 <summary><b>Bash / macOS / Linux / WSL</b></summary>
 
