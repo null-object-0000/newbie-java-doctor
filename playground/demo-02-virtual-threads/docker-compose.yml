@@ -3,6 +3,8 @@ services:
   #    给足资源，确保它不会成为瓶颈
   slow-api:
     image: openresty/openresty:alpine
+    cpus: 2
+    mem_limit: 4g
     volumes:
       - ./mock-nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
     expose:
